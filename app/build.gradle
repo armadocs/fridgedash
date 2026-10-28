@@ -1,0 +1,54 @@
+plugins {
+    id 'com.android.application'
+}
+
+def keystoreProps = new Properties()
+def keystoreFile = file('keystore.properties')
+if (keystoreFile.exists()) {
+    keystoreFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace 'app.fridgedash'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.fridgedash'
+        // The fridge reportedly runs Android 9 (API 28). minSdk 24 keeps room
+        // for testing on older emulators; targetSdk 28 matches the device so
+        // no newer-platform behaviour changes apply.
+        minSdk 24
+        targetSdk 28
+        versionCode 1
+        versionName '0.1.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(keystoreProps['storeFile'] ?: 'fridgedash.keystore')
+            storePassword keystoreProps['storePassword']
+            keyAlias keystoreProps['keyAlias']
+            keyPassword keystoreProps['keyPassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        // targetSdk 28 is deliberate (matches the fridge); don't fail release builds over it.
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+// No dependencies on purpose: no AndroidX, no Google Play Services.

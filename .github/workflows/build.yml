@@ -1,0 +1,50 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build signed release APK
+        run: gradle --no-daemon assembleRelease
+
+      - name: Prepare download files
+        run: |
+          VERSION=$(grep -m1 "versionName" app/build.gradle | sed -E "s/.*'(.*)'.*/\1/")
+          mkdir out
+          cp app/build/outputs/apk/release/app-release.apk "out/fridgedash-$VERSION.apk"
+          # Same file with a .jpg name, ready for the fridge's Bluetooth photo transfer.
+          cp "out/fridgedash-$VERSION.apk" "out/fridgedash-$VERSION.jpg"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fridgedash-apk
+          path: out/
+
+      - name: Publish as a GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${VERSION}-build${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" out/* \
+            --title "FridgeDash ${VERSION} (build ${GITHUB_RUN_NUMBER})" \
+            --notes "Built from commit ${GITHUB_SHA::7}. On your phone, download the .jpg file and send it to the fridge with Bluetooth (My Apps → Album → +). On the fridge, rename it back to .apk and install."
