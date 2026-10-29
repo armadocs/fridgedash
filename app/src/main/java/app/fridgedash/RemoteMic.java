@@ -57,6 +57,8 @@ final class RemoteMic {
     private final Context app;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final LinkedBlockingQueue<byte[]> audio = new LinkedBlockingQueue<>();
+    /** All writes to the device happen here: never on the screen's thread (Android forbids it). */
+    private final java.util.concurrent.ExecutorService writer = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     private volatile boolean serving;
     private ServerSocket server;
@@ -81,14 +83,18 @@ final class RemoteMic {
         ping.start();
     }
 
-    synchronized void stopServer() {
+    void stopServer() {
         serving = false;
-        unregister();
-        try { if (server != null) server.close(); } catch (IOException ignored) {}
-        server = null;
-        Client c = client;
-        if (c != null) c.close();
-        client = null;
+        new Thread(() -> {
+            synchronized (RemoteMic.this) {
+                unregister();
+                try { if (server != null) server.close(); } catch (IOException ignored) {}
+                server = null;
+            }
+            Client c = client;
+            if (c != null) c.close();
+            client = null;
+        }, "remote-mic-stop").start();
     }
 
     boolean isServing() { return serving; }
@@ -274,19 +280,32 @@ final class RemoteMic {
             audio.offer(at24k);
         }
 
-        synchronized void line(String s) {
+        void line(String s) {
+            if (!alive || out == null) return;
+            try {
+                writer.execute(() -> write(s));
+            } catch (Exception ignored) {
+            }
+        }
+
+        private synchronized void write(String s) {
             if (!alive || out == null) return;
             try {
                 out.write((s + "\n").getBytes("UTF-8"));
                 out.flush();
-            } catch (IOException e) {
+            } catch (Exception e) {
                 close();
             }
         }
 
         void close() {
             alive = false;
-            try { sock.close(); } catch (IOException ignored) {}
+            // Closing a socket is network work too: keep it off the screen's thread.
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                new Thread(() -> { try { sock.close(); } catch (IOException ignored) {} }).start();
+            } else {
+                try { sock.close(); } catch (IOException ignored) {}
+            }
             if (client == this) client = null;
         }
     }

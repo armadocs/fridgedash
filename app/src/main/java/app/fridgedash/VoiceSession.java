@@ -95,6 +95,8 @@ final class VoiceSession {
     private volatile long itemStartFrame;
 
     private volatile boolean responseActive;
+    private volatile long hearingSince;
+    private static final long MAX_TURN_MS = 15_000; // background noise can stop "end of speech" detection
     private volatile long lastActivity;
     private final StringBuilder transcript = new StringBuilder();
     private boolean newTurnPending = true;
@@ -184,10 +186,10 @@ final class VoiceSession {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             if (!running) { webSocket.close(1000, null); return; }
-            send(sessionUpdate());
             RemoteMic rm = RemoteMic.get(ctx);
-            if (useMic && rm.connected()) {
-                remote = rm;
+            if (useMic && rm.connected()) remote = rm;
+            send(sessionUpdate());
+            if (remote != null) {
                 final String msg = "Using microphone: " + rm.clientName();
                 main.post(() -> listener.onError(msg, false));
             } else if (useMic && BtAudio.headsetConnected(ctx)) {
@@ -238,6 +240,7 @@ final class VoiceSession {
         switch (type) {
             case "input_audio_buffer.speech_started":
                 lastActivity = System.currentTimeMillis();
+                hearingSince = lastActivity;
                 if (bargeIn && isAssistantAudible()) interrupt();
                 setState(State.HEARING);
                 break;
@@ -298,7 +301,12 @@ final class VoiceSession {
             JSONObject pcm = new JSONObject().put("type", "audio/pcm").put("rate", RATE);
             JSONObject input = new JSONObject()
                     .put("format", pcm)
-                    .put("turn_detection", useMic ? new JSONObject().put("type", "semantic_vad") : JSONObject.NULL);
+                    .put("turn_detection", !useMic ? JSONObject.NULL
+                            : remote != null
+                            // Phone mic: clean audio, so a plain "0.7 s of quiet = your turn is over" works best.
+                            ? new JSONObject().put("type", "server_vad").put("threshold", 0.5)
+                                    .put("prefix_padding_ms", 300).put("silence_duration_ms", 700)
+                            : new JSONObject().put("type", "semantic_vad"));
             JSONObject output = new JSONObject()
                     .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
                     .put("voice", voice);
@@ -522,6 +530,13 @@ final class VoiceSession {
                 main.post(() -> { if (state != State.SPEAKING) listener.onLevel(level); });
                 send("{\"type\":\"input_audio_buffer.append\",\"audio\":\""
                         + Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}");
+            }
+            if (state == State.HEARING && hearingSince > 0 && now - hearingSince > MAX_TURN_MS) {
+                // Never heard the end of the sentence (noisy kitchen?): answer what we have.
+                hearingSince = 0;
+                send("{\"type\":\"input_audio_buffer.commit\"}");
+                send("{\"type\":\"response.create\"}");
+                setState(State.THINKING);
             }
             if (idleHangup(now)) return;
         }
