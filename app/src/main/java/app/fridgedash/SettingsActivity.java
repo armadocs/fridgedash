@@ -283,7 +283,7 @@ public class SettingsActivity extends BaseActivity {
             String msg;
             try {
                 Notion.ConnectResult r = Notion.connect(token);
-                Prefs.setNotionDb(app, r.dbId);
+                Notion.saveConnection(app, r);
                 int imported = 0;
                 if (r.created) {
                     Brief file = Brief.cached(app);
@@ -292,10 +292,12 @@ public class SettingsActivity extends BaseActivity {
                 Brief b = Notion.fetch(app);
                 int open = 0;
                 for (Brief.Section sct : b.sections) for (Brief.Item it : sct.items) if (!it.done) open++;
-                msg = "✓ Connected. " + (r.created ? "Created the \"Daily Brief\" database in \"" + r.parentTitle
-                        + "\"" + (imported > 0 ? " and imported " + imported + " items from the current brief" : "") + ". "
-                        : "Using your existing \"Daily Brief\" database. ")
-                        + open + " open items.";
+                msg = "✓ Connected to \"" + r.dbTitle + "\""
+                        + (r.created ? " (new, in \"" + r.parentTitle + "\""
+                            + (imported > 0 ? ", imported " + imported + " items" : "") + ")" : "")
+                        + ". " + open + " open items in " + b.sections.size() + " sections.\n"
+                        + "Columns: " + r.cols.describe() + "."
+                        + (r.addedDone ? "\nAdded a \"Done\" checkbox column; tell Grok to use it." : "");
             } catch (Exception e) {
                 msg = "✗ " + e.getMessage();
             }
