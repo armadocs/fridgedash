@@ -204,6 +204,7 @@ public class SettingsActivity extends BaseActivity {
             notionStatus.setText("Disconnected. The fridge uses the brief file again.");
         }, false), weighted());
         col.addView(notionRow);
+        col.addView(button("Test Notion write (ticks & unticks one item)", v -> testNotionWrite(), false), full());
         notionStatus = note(Notion.configured(this) ? "✓ Connected to the Daily Brief database." : "Not connected.");
         col.addView(notionStatus);
 
@@ -268,6 +269,38 @@ public class SettingsActivity extends BaseActivity {
         if (clip == null || clip.getItemCount() == 0) return "";
         CharSequence t = clip.getItemAt(0).coerceToText(this);
         return t == null ? "" : t.toString().trim();
+    }
+
+    private void testNotionWrite() {
+        notionStatus.setText("Testing…");
+        final Context app = getApplicationContext();
+        bg.execute(() -> {
+            StringBuilder sb = new StringBuilder();
+            try {
+                Brief b = Notion.fetch(app);
+                Brief.Item target = null;
+                for (Brief.Section sct : b.sections) for (Brief.Item it : sct.items)
+                    if (target == null && !it.done) target = it;
+                if (target == null) {
+                    sb.append("No open item to test with.");
+                } else {
+                    sb.append("Item: ").append(target.title).append("\n");
+                    Notion.setDone(app, target.pageId, true);
+                    sb.append("✓ Ticked Done. ");
+                    Brief after = Notion.fetch(app);
+                    boolean seen = false;
+                    for (Brief.Section sct : after.sections) for (Brief.Item it : sct.items)
+                        if (it.pageId.equals(target.pageId) && it.done) seen = true;
+                    sb.append(seen ? "Notion confirms it's Done. " : "But Notion still shows it open! ");
+                    Notion.setDone(app, target.pageId, false);
+                    sb.append("✓ Unticked again.");
+                }
+            } catch (Throwable e) {
+                sb.append("✗ ").append(e.getClass().getSimpleName()).append(": ").append(e.getMessage());
+            }
+            final String m = sb.toString();
+            main.post(() -> { if (!isDestroyed()) notionStatus.setText(m); });
+        });
     }
 
     private void connectNotion() {

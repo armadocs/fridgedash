@@ -114,7 +114,16 @@ public class MainActivity extends BaseActivity {
 
     /** Writes a check-off to Notion; on failure, undoes it on screen. */
     private void syncToggle(Brief b, Brief.Item it, boolean done) {
-        if (it.pageId.isEmpty() || !Notion.configured(this)) return;
+        if (!Notion.configured(this)) return;
+        if (it.pageId.isEmpty()) {
+            // Still showing the old file-based brief: say so instead of failing silently.
+            b.setDone(this, it, !done);
+            briefView.show(b, "loading from Notion…");
+            Toast.makeText(this, "Still loading your list from Notion. Try again in a moment.", Toast.LENGTH_LONG).show();
+            brief = null;
+            refreshBrief();
+            return;
+        }
         final android.content.Context app = getApplicationContext();
         bg.execute(() -> {
             String err = null;
@@ -123,10 +132,13 @@ public class MainActivity extends BaseActivity {
                 try (java.io.FileOutputStream out = new java.io.FileOutputStream(Brief.cacheFile(app))) {
                     out.write(b.toJson().getBytes("UTF-8"));
                 }
-            } catch (Exception e) {
-                err = e.getMessage();
+            } catch (Throwable e) {
+                err = e.getClass().getSimpleName() + ": " + e.getMessage();
             }
             final String e = err;
+            if (e == null) main.post(() -> {
+                if (!isDestroyed()) Toast.makeText(this, done ? "✓ Done in Notion" : "Reopened in Notion", Toast.LENGTH_SHORT).show();
+            });
             if (e != null) main.post(() -> {
                 if (isDestroyed()) return;
                 b.setDone(app, it, !done);
@@ -154,7 +166,9 @@ public class MainActivity extends BaseActivity {
                 briefBusy = false;
                 if (isDestroyed()) return;
                 if (f != null) brief = f;
-                showBrief(e == null ? null : (brief != null ? "offline copy" : "Couldn't load: " + e));
+                String when = new java.text.SimpleDateFormat("H:mm", java.util.Locale.US).format(new java.util.Date());
+                showBrief(e == null ? "updated " + when
+                        : (brief != null ? "offline copy (" + e + ")" : "Couldn't load: " + e));
             });
         });
     }
