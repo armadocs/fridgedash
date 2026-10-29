@@ -269,7 +269,8 @@ public class SettingsActivity extends BaseActivity {
         }
         micStatus.setText("Keep talking for about 8 seconds…");
         final Context app = getApplicationContext();
-        bg.execute(() -> {
+        // Own thread: a stuck microphone must not block other settings actions.
+        new Thread(() -> {
             StringBuilder sb = new StringBuilder();
             int bestSource = -1;
             float best = 0;
@@ -290,12 +291,23 @@ public class SettingsActivity extends BaseActivity {
                             r.startRecording();
                             short[] buf = new short[rate / 10];
                             float peak = 0;
-                            for (int i = 0; i < 15; i++) {
-                                int n = r.read(buf, 0, buf.length);
-                                if (n > 0) peak = Math.max(peak, VoiceSession.rms(buf, n));
+                            long frames = 0;
+                            long t0 = System.currentTimeMillis();
+                            while (System.currentTimeMillis() - t0 < 1500) {
+                                int n = r.read(buf, 0, buf.length, AudioRecord.READ_NON_BLOCKING);
+                                if (n > 0) {
+                                    frames += n;
+                                    peak = Math.max(peak, VoiceSession.rms(buf, n));
+                                } else {
+                                    try { Thread.sleep(20); } catch (InterruptedException ie) { break; }
+                                }
                             }
-                            line = Math.round(peak * 100) + "%";
-                            if (peak > best) { best = peak; bestSource = MIC_SOURCES[k]; }
+                            if (frames == 0) {
+                                line = "opens, but no sound data at all";
+                            } else {
+                                line = Math.round(peak * 100) + "%";
+                                if (peak > best) { best = peak; bestSource = MIC_SOURCES[k]; }
+                            }
                         }
                     } catch (Exception e) {
                         line = "error";
@@ -308,13 +320,13 @@ public class SettingsActivity extends BaseActivity {
                     Prefs.setMicSource(app, bestSource);
                     sb.insert(0, "✓ Microphone works. Calls will use the loudest input.\n");
                 } else {
-                    sb.insert(0, "✗ No input heard anything. This fridge probably has no working microphone "
-                            + "(or it's blocked by Hisense).\n");
+                    sb.insert(0, "✗ No input delivered any sound. This fridge most likely has no working "
+                            + "microphone (or Hisense blocks it).\n");
                 }
             }
             final String fr = sb.toString().trim();
             main.post(() -> { if (!isDestroyed()) micStatus.setText(fr); });
-        });
+        }, "mic-test").start();
     }
 
     /** Plays a 1-second tone through the same channel ChatGPT's voice uses. */

@@ -364,11 +364,31 @@ final class VoiceSession {
 
     private void micLoopInner() {
         short[] buf = new short[recRate / 10]; // 100 ms
+        int filled = 0;
+        long lastData = System.currentTimeMillis();
+        boolean everData = false;
         while (running && !Thread.currentThread().isInterrupted()) {
-            int n = rec.read(buf, 0, buf.length);
-            if (n <= 0) continue;
-            float level = rms(buf, n);
+            // Non-blocking: some fridges open the mic but never deliver sound,
+            // and a blocking read would hang forever.
+            int got = rec.read(buf, filled, buf.length - filled, AudioRecord.READ_NON_BLOCKING);
             long now = System.currentTimeMillis();
+            if (got > 0) {
+                filled += got;
+                lastData = now;
+                everData = true;
+            } else {
+                if (now - lastData > 3000) {
+                    fail(everData ? "The microphone stopped sending sound."
+                            : "The microphone isn't sending any sound. This fridge may not have a working microphone.");
+                    return;
+                }
+                try { Thread.sleep(15); } catch (InterruptedException e) { return; }
+                continue;
+            }
+            if (filled < buf.length) continue;
+            int n = filled;
+            filled = 0;
+            float level = rms(buf, n);
 
             boolean paused = muted || (!bargeIn && (isAssistantAudible() || now - lastPlaybackEnd < TAIL_MS));
             if (!paused) {
