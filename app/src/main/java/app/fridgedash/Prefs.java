@@ -10,6 +10,16 @@ final class Prefs {
     static final String DEFAULT_MODEL = "gpt-realtime-2.1";
     static final String DEFAULT_VOICE = "marin";
     static final String[] VOICES = {"marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"};
+    static final String[] VOICE_INFO = {
+            "female, warm and natural (most lifelike)", "male, calm and natural (most lifelike)",
+            "neutral, clear", "male, soft", "male, expressive", "female, bright and friendly",
+            "male, steady", "female, calm", "female, light", "male, lively"};
+
+    /** Realtime voice models offered in Settings (any other name can be typed in "Model (advanced)"). */
+    static final String[] MODELS = {"gpt-realtime-2.1", "gpt-realtime-2", "gpt-realtime-mini"};
+    static final String[] MODEL_INFO = {"newest, best quality (default)", "previous version", "cheaper and faster, simpler answers"};
+
+    static final float[] SPEEDS = {0.85f, 1.0f, 1.1f, 1.2f};
     static final int[] UI_WIDTHS = {480, 540, 600, 660};
 
     private static SharedPreferences p(Context c) {
@@ -94,6 +104,17 @@ final class Prefs {
     /** Home city for weather and local answers; empty = worked out from the internet address. */
     static String homeCity(Context c) { return p(c).getString("home_city", "").trim(); }
     static void setHomeCity(Context c, String v) { p(c).edit().putString("home_city", v == null ? "" : v.trim()).apply(); }
+
+    /** "auto" (answer in the language you speak), "sr" (always Serbian) or "en". */
+    static String language(Context c) { return p(c).getString("voice_language", "auto"); }
+    static void setLanguage(Context c, String v) { p(c).edit().putString("voice_language", v).apply(); }
+
+    static float speed(Context c) { return p(c).getFloat("voice_speed", 1.0f); }
+    static void setSpeed(Context c, float v) { p(c).edit().putFloat("voice_speed", v).apply(); }
+
+    /** Your own extra instructions for ChatGPT (personality, style, facts about the household). */
+    static String extraInstructions(Context c) { return p(c).getString("extra_instructions", "").trim(); }
+    static void setExtraInstructions(Context c, String v) { p(c).edit().putString("extra_instructions", v == null ? "" : v.trim()).apply(); }
 
     static SharedPreferences raw(Context c) { return p(c); }
 }

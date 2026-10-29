@@ -39,7 +39,8 @@ public class SettingsActivity extends BaseActivity {
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private LinearLayout col;
-    private EditText keyField, modelField, cityField;
+    private EditText keyField, modelField, cityField, extraField;
+    private TextView langButton, speedButton, modelButton, voiceStatus;
     private TextView homeButton;
     private TextView inputButton;
     private EditText briefUrlField, briefTokenField;
@@ -118,8 +119,41 @@ public class SettingsActivity extends BaseActivity {
         col.addView(note("Leave empty to work it out automatically. ChatGPT can check the weather and search the web "
                 + "(news, sports, prices, opening hours); searches use your OpenAI key and cost about a cent each."));
 
-        voiceButton = button("", v -> cycleVoice(), false);
+        langButton = button("", v -> {
+            String l = Prefs.language(this);
+            Prefs.setLanguage(this, "auto".equals(l) ? "sr" : "sr".equals(l) ? "en" : "auto");
+            refreshVoice();
+        }, false);
+        col.addView(langButton, full());
+        voiceButton = button("", v -> pickVoice(), false);
         col.addView(voiceButton, full());
+        LinearLayout vrow = row();
+        speedButton = button("", v -> {
+            float cur = Prefs.speed(this), next = Prefs.SPEEDS[0];
+            for (int i = 0; i < Prefs.SPEEDS.length; i++)
+                if (Math.abs(Prefs.SPEEDS[i] - cur) < 0.01f) next = Prefs.SPEEDS[(i + 1) % Prefs.SPEEDS.length];
+            Prefs.setSpeed(this, next);
+            refreshVoice();
+        }, false);
+        vrow.addView(speedButton, weighted());
+        vrow.addView(button("▶ Hear this voice", v -> previewVoice(), true), weighted());
+        col.addView(vrow);
+        modelButton = button("", v -> pickModel(), false);
+        col.addView(modelButton, full());
+        voiceStatus = note("Pick a voice and tap ▶ to hear it speak your language (uses your key, well under a cent).");
+        col.addView(voiceStatus);
+
+        col.addView(text("Your instructions for ChatGPT (optional)", 12, false));
+        extraField = new EditText(this);
+        extraField.setMinLines(2);
+        extraField.setMaxLines(6);
+        extraField.setHint("e.g. Zovi me Boris. Budi kratak i duhovit. We are a family of four.");
+        extraField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        extraField.setTextColor(getColor(R.color.text));
+        extraField.setHintTextColor(getColor(R.color.text_dim));
+        extraField.setText(Prefs.extraInstructions(this));
+        col.addView(extraField);
+        col.addView(note("Personality, how to address you, facts about your home: ChatGPT follows this in every call."));
         refreshVoice();
 
         bargeButton = button("", v -> {
@@ -299,6 +333,7 @@ public class SettingsActivity extends BaseActivity {
         // Save typed values when leaving.
         Prefs.setApiKey(this, keyField.getText().toString());
         Prefs.setModel(this, modelField.getText().toString());
+        Prefs.setExtraInstructions(this, extraField.getText().toString());
         Prefs.setHomeCity(this, cityField.getText().toString());
         Prefs.setBriefUrl(this, briefUrlField.getText().toString());
         Prefs.setBriefToken(this, briefTokenField.getText().toString());
@@ -474,12 +509,60 @@ public class SettingsActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ voice options
 
-    private void cycleVoice() {
-        String cur = Prefs.voice(this);
-        int i = 0;
-        for (int k = 0; k < Prefs.VOICES.length; k++) if (Prefs.VOICES[k].equals(cur)) i = k;
-        Prefs.setVoice(this, Prefs.VOICES[(i + 1) % Prefs.VOICES.length]);
-        refreshVoice();
+    private void pickVoice() {
+        String[] items = new String[Prefs.VOICES.length];
+        int checked = 0;
+        for (int i = 0; i < items.length; i++) {
+            items[i] = Prefs.VOICES[i] + " — " + Prefs.VOICE_INFO[i];
+            if (Prefs.VOICES[i].equals(Prefs.voice(this))) checked = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Voice (tap one to hear it)")
+                .setSingleChoiceItems(items, checked, (d, which) -> {
+                    Prefs.setVoice(this, Prefs.VOICES[which]);
+                    refreshVoice();
+                    previewVoice();
+                })
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
+    private void pickModel() {
+        String[] items = new String[Prefs.MODELS.length];
+        int checked = -1;
+        String cur = modelField.getText().toString().trim();
+        for (int i = 0; i < items.length; i++) {
+            items[i] = Prefs.MODELS[i] + " — " + Prefs.MODEL_INFO[i];
+            if (Prefs.MODELS[i].equals(cur)) checked = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Voice model")
+                .setSingleChoiceItems(items, checked, (d, which) -> {
+                    modelField.setText(Prefs.MODELS[which]);
+                    Prefs.setModel(this, Prefs.MODELS[which]);
+                    refreshVoice();
+                    d.dismiss();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private boolean previewing;
+
+    private void previewVoice() {
+        if (previewing) return;
+        previewing = true;
+        Prefs.setModel(this, modelField.getText().toString());
+        Prefs.setExtraInstructions(this, extraField.getText().toString());
+        voiceStatus.setText("Getting a sample of \"" + Prefs.voice(this) + "\"…");
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            String r = VoicePreview.play(app);
+            main.post(() -> {
+                previewing = false;
+                if (!isDestroyed()) voiceStatus.setText(r);
+            });
+        }, "voice-preview").start();
     }
 
     private void cycleInput() {
@@ -525,7 +608,13 @@ public class SettingsActivity extends BaseActivity {
     }
 
     private void refreshVoice() {
-        voiceButton.setText("Voice: " + Prefs.voice(this) + "   (tap to change)");
+        String l = Prefs.language(this);
+        langButton.setText("Language: " + ("sr".equals(l) ? "Always Serbian" : "en".equals(l) ? "Always English"
+                : "Automatic (answers in the language you speak)") + "   (tap to change)");
+        voiceButton.setText("Voice: " + Prefs.voice(this) + "   (tap to choose)");
+        float sp = Prefs.speed(this);
+        speedButton.setText("Speed: " + (sp < 0.95f ? "slower" : sp < 1.05f ? "normal" : sp < 1.15f ? "faster" : "fastest"));
+        modelButton.setText("Model: " + Prefs.model(this) + "   (tap to choose)");
     }
 
     private void refreshBarge() {

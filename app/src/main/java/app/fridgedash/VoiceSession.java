@@ -324,7 +324,8 @@ final class VoiceSession {
                             : new JSONObject().put("type", "semantic_vad"));
             JSONObject output = new JSONObject()
                     .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
-                    .put("voice", voice);
+                    .put("voice", voice)
+                    .put("speed", Prefs.speed(ctx));
             JSONObject session = new JSONObject()
                     .put("type", "realtime")
                     .put("instructions", instructions(ctx))
@@ -333,7 +334,8 @@ final class VoiceSession {
                             .put("type", "function")
                             .put("name", "end_call")
                             .put("description", "Hang up and close the voice screen. Use when the user says "
-                                    + "stop, that's all, goodbye, bye, thanks that's it, close, or otherwise ends the conversation.")
+                                    + "stop, that's all, goodbye, bye, thanks that's it, close, or in Serbian: stani, "
+                                    + "ćao, zdravo (as goodbye), doviđenja, to je sve, hvala to je to, ugasi, zatvori.")
                             .put("parameters", new JSONObject().put("type", "object")
                                     .put("properties", new JSONObject()))))
                     .put("tool_choice", "auto")
@@ -348,7 +350,9 @@ final class VoiceSession {
         String home = Tools.homeName(c);
         SimpleDateFormat f = new SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a zzzz", Locale.US);
         f.setTimeZone(TimeZone.getDefault());
+        String extra = Prefs.extraInstructions(c);
         return "You are ChatGPT, talking by voice through the screen on a kitchen refrigerator. "
+                + languageRule(Prefs.language(c)) + " "
                 + "Speak naturally and keep answers short (a few sentences) unless asked for more detail. "
                 + "People may be cooking or busy, so be clear and practical. "
                 + "When the user says stop, bye, that's all or otherwise ends the conversation, say a very short "
@@ -358,7 +362,20 @@ final class VoiceSession {
                 + "opening hours or anything current. Never say you have no internet or real-time access; look it up. "
                 + "Before a web_search, say a few words like \"Let me check.\" "
                 + (home.isEmpty() ? "" : "The fridge is at the user's home in " + home + ". ")
-                + "Right now it is " + f.format(new Date()) + ".";
+                + "Right now it is " + f.format(new Date()) + "."
+                + (extra.isEmpty() ? "" : "\n\nThe user's own instructions (follow them): " + extra);
+    }
+
+    /** How to handle language; Serbian gets explicit pronunciation guidance (models drift to an English accent). */
+    static String languageRule(String lang) {
+        String serbian = "speak Serbian (srpski, ekavica) exactly like a native speaker from Belgrade: natural Serbian "
+                + "pronunciation, stress and intonation, never an English or foreign accent. Use Serbian words and "
+                + "grammar, not Croatian or Bosnian. Write any text in Latin script (latinica).";
+        if ("sr".equals(lang)) {
+            return "Always " + serbian + " Answer in Serbian even if the user mixes in English, unless they ask you to switch.";
+        }
+        if ("en".equals(lang)) return "Always speak English.";
+        return "Answer in the language the user speaks. When it is Serbian, " + serbian;
     }
 
     private void send(String json) {
