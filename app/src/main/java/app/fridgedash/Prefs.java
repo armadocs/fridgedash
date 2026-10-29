@@ -51,12 +51,17 @@ final class Prefs {
         if ("keyboard".equals(m)) return true;
         if ("mic".equals(m)) return false;
         if (BtAudio.headsetConnected(c)) return false;          // Bluetooth speakerphone present
+        if (!micScan(c).isEmpty()) return false;               // deep scan found a working channel
         return micSource(c) < 0 || micViaBt(c);                 // built-in mic only if it tested OK
     }
 
     /** The last successful mic test used a Bluetooth device (so it says nothing about the fridge). */
     static boolean micViaBt(Context c) { return p(c).getBoolean("mic_via_bt", false); }
     static void setMicViaBt(Context c, boolean v) { p(c).edit().putBoolean("mic_via_bt", v).apply(); }
+
+    /** Mic setup found by the deep scan ("source,rate,channels,channel"), or "" if none. */
+    static String micScan(Context c) { return p(c).getString("mic_scan", ""); }
+    static void setMicScan(Context c, String v) { p(c).edit().putString("mic_scan", v).apply(); }
 
     static SharedPreferences raw(Context c) { return p(c); }
 }

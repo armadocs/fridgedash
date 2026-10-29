@@ -72,6 +72,8 @@ final class VoiceSession {
     // Microphone
     private AudioRecord rec;
     private int recRate;
+    private int recChannels = 1;     // >1 when the deep scan found sound on one channel of a mic array
+    private int recChannel = 0;
     private Thread micThread;
     private AcousticEchoCanceler aec;
     private NoiseSuppressor ns;
@@ -368,6 +370,18 @@ final class VoiceSession {
     }
 
     private AudioRecord openMic() {
+        if (!usingBt) {
+            MicScan.Config cfg = MicScan.Config.decode(Prefs.micScan(ctx));
+            if (cfg != null) {
+                AudioRecord r = MicScan.open(cfg);
+                if (r != null) {
+                    recRate = cfg.rate;
+                    recChannels = cfg.channels;
+                    recChannel = cfg.channel;
+                    return r;
+                }
+            }
+        }
         int[] rates = {24000, 48000, 16000, 44100};
         int[] sources = usingBt
                 ? new int[]{MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC}
@@ -410,7 +424,8 @@ final class VoiceSession {
     }
 
     private void micLoopInner() {
-        short[] buf = new short[recRate / 10]; // 100 ms
+        short[] buf = new short[recRate / 10 * recChannels]; // 100 ms
+        short[] mono = new short[recRate / 10];
         int filled = 0;
         long lastData = System.currentTimeMillis();
         boolean everData = false;
@@ -435,12 +450,18 @@ final class VoiceSession {
             if (filled < buf.length) continue;
             int n = filled;
             filled = 0;
-            float level = rms(buf, n);
+            short[] src = buf;
+            if (recChannels > 1) {
+                n = MicScan.extract(buf, n, recChannels, recChannel, mono);
+                src = mono;
+            }
+            final short[] samples = src;
+            float level = rms(samples, n);
 
             boolean paused = muted || (!bargeIn && (isAssistantAudible() || now - lastPlaybackEnd < TAIL_MS));
             if (!paused) {
                 main.post(() -> { if (state != State.SPEAKING) listener.onLevel(level); });
-                byte[] pcm = toPcm24k(buf, n, recRate);
+                byte[] pcm = toPcm24k(samples, n, recRate);
                 send("{\"type\":\"input_audio_buffer.append\",\"audio\":\""
                         + Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}");
             }

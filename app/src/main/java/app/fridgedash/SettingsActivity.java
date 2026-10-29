@@ -111,6 +111,7 @@ public class SettingsActivity extends BaseActivity {
         testRow.addView(button("Test microphone", v -> testMic(), false), weighted());
         testRow.addView(button("Test speaker", v -> testSpeaker(), false), weighted());
         col.addView(testRow);
+        col.addView(button("Deep microphone scan (≈35 s, clap the whole time)", v -> deepScan(), false), full());
         micStatus = note("");
         col.addView(micStatus);
 
@@ -364,6 +365,19 @@ public class SettingsActivity extends BaseActivity {
             final String fr = sb.toString().trim();
             main.post(() -> { if (!isDestroyed()) { micStatus.setText(fr); refreshInput(); } });
         }, "mic-test").start();
+    }
+
+    private void deepScan() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC_TEST);
+            return;
+        }
+        micStatus.setText("Starting… clap and talk near the screen until it finishes.");
+        final Context app = getApplicationContext();
+        new Thread(() -> {
+            String report = MicScan.run(app, line -> main.post(() -> { if (!isDestroyed()) micStatus.setText(line); }));
+            main.post(() -> { if (!isDestroyed()) { micStatus.setText(report); refreshInput(); } });
+        }, "mic-scan").start();
     }
 
     /** Plays a 1-second tone through the same channel ChatGPT's voice uses. */

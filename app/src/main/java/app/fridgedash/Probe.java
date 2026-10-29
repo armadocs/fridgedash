@@ -56,6 +56,11 @@ final class Probe {
         Pattern interesting = Pattern.compile(
                 "(?i)(<module|attachedDevices|<item>|devicePort|AUDIO_DEVICE_IN|_IN_|inputs|BUILTIN_MIC|SCO|USB|mixPort.*source|role=\"sink\")");
         for (String f : policyFiles) dumpFile(sb, f, interesting, 140);
+        // Mic-array (AISpeech) and include lines, unfiltered.
+        dumpFile(sb, "/vendor/etc/aispeech_audio_policy_configuration.xml", null, 120);
+        dumpFile(sb, "/vendor/etc/audio_policy_configuration.xml", Pattern.compile("(?i)include"), 20);
+        dumpFile(sb, "/vendor/etc/audio_device.xml", Pattern.compile("(?i)(mic|record|capture|in_|path|device)"), 120);
+        dumpFile(sb, "/vendor/etc/mixer_paths.xml", Pattern.compile("(?i)(<path|mic|adc|tdm|capture|record)"), 120);
 
         sb.append("== Audio/Bluetooth config files present ==\n");
         listDir(sb, "/vendor/etc", "(?i).*(audio|mixer|bluetooth|bt_).*");
@@ -90,6 +95,8 @@ final class Probe {
         sb.append('\n');
 
         sb.append("== System properties (audio / bluetooth / vendor) ==\n");
+        sb.append("Mic-array related services/properties:\n");
+        getprop(sb, "(?i)(aispeech|dui|duilite|mic_?array|tdm|i2s|asr|wakeup|ai\\.)");
         getprop(sb, "(?i)(bluetooth|\\.bt\\.|bt\\.|audio|\\.mic|sco|hfp|usb\\.config|hisense|hmct|voice|vendor\\.product|ro\\.product|ro\\.board|ro\\.hardware|ro\\.build\\.(version|type|tags))");
         return sb.toString();
     }
