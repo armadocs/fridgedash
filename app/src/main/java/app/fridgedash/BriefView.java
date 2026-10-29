@@ -39,6 +39,33 @@ final class BriefView {
 
     void setListener(Listener l) { listener = l; }
 
+    /** Items ticked in the last few seconds stay visible (crossed out) so a wrong tap can be undone. */
+    private final java.util.Map<String, Long> justTicked = new java.util.HashMap<>();
+    private static final long UNDO_MS = 4000;
+
+    private static String keyOf(Brief.Item it) { return it.pageId + "|" + it.id; }
+
+    private boolean visible(Brief b, Brief.Item it) {
+        if (!b.isDone(ctx, it)) return true;
+        Long t = justTicked.get(keyOf(it));
+        return t != null && System.currentTimeMillis() - t < UNDO_MS;
+    }
+
+    private int visibleCount(Brief b, Brief.Section s) {
+        int n = 0;
+        for (Brief.Item it : s.items) if (visible(b, it)) n++;
+        return n;
+    }
+
+    private void ticked(Brief b, Brief.Item it, boolean nowDone) {
+        if (nowDone) {
+            justTicked.put(keyOf(it), System.currentTimeMillis());
+            col.postDelayed(() -> { if (current == b) show(b, currentStatus); }, UNDO_MS + 100);
+        } else {
+            justTicked.remove(keyOf(it));
+        }
+    }
+
     BriefView(Context ctx, LinearLayout col) {
         this.ctx = ctx;
         this.col = col;
@@ -58,22 +85,25 @@ final class BriefView {
         currentStatus = status;
         col.removeAllViews();
         int total = b.taskCount();
-        String progress = total > 0 ? b.doneCount(ctx) + " of " + total + " done" : null;
+        int open = total - b.doneCount(ctx);
+        String progress = total == 0 ? null : open == 0 ? "All done ✓" : open + " to do";
         col.addView(header("Today", subtitle(b, status), progress));
 
         List<Brief.Section> pairable = new ArrayList<>();
         for (Brief.Section s : b.sections) {
             switch (s.kind) {
                 case "tasks":
+                    if (visibleCount(b, s) == 0) break;
                     flushPairs(pairable);
                     col.addView(tasksCard(b, s), cardLp());
                     break;
                 case "later":
+                    if (visibleCount(b, s) == 0) break;
                     flushPairs(pairable);
                     col.addView(laterCard(s), cardLp());
                     break;
                 default:
-                    pairable.add(s);
+                    if (visibleCount(b, s) > 0) pairable.add(s);
             }
         }
         flushPairs(pairable);
@@ -135,8 +165,10 @@ final class BriefView {
     private GlassLayout tasksCard(Brief b, Brief.Section s) {
         GlassLayout card = card();
         card.addView(sectionTitle(s.title, AMBER));
+        int shown = 0;
         for (int i = 0; i < s.items.size(); i++) {
             final Brief.Item it = s.items.get(i);
+            if (!visible(b, it)) continue;
             final boolean done = b.isDone(ctx, it);
             LinearLayout row = new LinearLayout(ctx);
             row.setOrientation(LinearLayout.HORIZONTAL);
@@ -177,11 +209,12 @@ final class BriefView {
 
             row.setOnClickListener(v -> {
                 b.setDone(ctx, it, !done);
+                ticked(b, it, !done);
                 if (listener != null) listener.onToggle(b, it, !done);
                 show(b, currentStatus);
             });
 
-            if (i > 0) card.addView(divider());
+            if (shown++ > 0) card.addView(divider());
             card.addView(row);
         }
         return card;
@@ -193,6 +226,7 @@ final class BriefView {
         GlassLayout card = card();
         card.addView(sectionTitle(s.title, accent));
         for (Brief.Item it : s.items) {
+            if (current != null && !visible(current, it)) continue;
             LinearLayout row = new LinearLayout(ctx);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setPadding(0, dp(8), 0, 0);
@@ -236,12 +270,13 @@ final class BriefView {
         LinearLayout head = new LinearLayout(ctx);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView t = text(s.title + "  ·  " + s.items.size(), 11, TEXT, true);
+        TextView t = text(s.title + "  ·  " + (current == null ? s.items.size() : visibleCount(current, s)), 11, TEXT, true);
         head.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         head.addView(text(parkingOpen ? "Hide" : "Show", 10, GREY, false));
         card.addView(head);
         if (parkingOpen && current != null) {
             for (Brief.Item it : s.items) {
+                if (!visible(current, it)) continue;
                 final boolean done = current.isDone(ctx, it);
                 TextView line = text((done ? "☑  " : "☐  ") + it.title + (it.detail.isEmpty() ? "" : " — " + it.detail),
                         9.5f, done ? 0x80E8ECF5 : DIM, false);
@@ -252,6 +287,7 @@ final class BriefView {
                 line.setOnClickListener(v -> {
                     Brief b = current;
                     b.setDone(ctx, it, !done);
+                    ticked(b, it, !done);
                     if (listener != null) listener.onToggle(b, it, !done);
                     show(b, currentStatus);
                 });
