@@ -96,7 +96,10 @@ public class WeatherActivity extends BaseActivity {
         col.addView(top);
 
         if (w == null) {
-            TextView t = text("Loading the forecast… (needs Wi-Fi)", 13, false);
+            TextView t = text(Weather.lastError.isEmpty() ? "Loading the forecast…"
+                    : "Couldn't load the weather: " + Weather.lastError + "\n\nTap here to try again.", 13, false);
+            t.setLineSpacing(0, 1.25f);
+            t.setOnClickListener(v -> { t.setText("Loading the forecast…"); refresh(); });
             t.setPadding(0, dp(40), 0, 0);
             col.addView(t);
             return;

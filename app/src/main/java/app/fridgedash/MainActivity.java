@@ -147,7 +147,7 @@ public class MainActivity extends BaseActivity {
                 weatherBusy = false;
                 if (isDestroyed()) return;
                 if (fw != null) showWeather(fw);
-                else if (c == null) weatherSub.setText("Weather unavailable");
+                else if (c == null) weatherSub.setText("Weather: tap for details");
             });
         });
     }

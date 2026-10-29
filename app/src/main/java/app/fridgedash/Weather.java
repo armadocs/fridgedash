@@ -19,6 +19,9 @@ final class Weather {
 
     static final long MAX_AGE_MS = 30 * 60 * 1000;
 
+    /** Why the last download failed, shown on screen; "" if it worked. */
+    static volatile String lastError = "";
+
     static final class Hour {
         String time; int temp, code, rain; boolean day;
     }
@@ -60,6 +63,18 @@ final class Weather {
 
     /** Downloads a fresh forecast for the home location and saves it. Network: call off the UI thread. */
     static Weather fetch(Context c) throws Exception {
+        try {
+            Weather w = fetchInner(c);
+            lastError = "";
+            return w;
+        } catch (Exception e) {
+            String m = e.getMessage();
+            lastError = m == null || m.isEmpty() ? e.getClass().getSimpleName() : m;
+            throw e;
+        }
+    }
+
+    private static Weather fetchInner(Context c) throws Exception {
         Object[] where = Tools.home(c);
         if (where == null) throw new java.io.IOException("location unknown");
         String url = "https://api.open-meteo.com/v1/forecast?latitude=" + where[0] + "&longitude=" + where[1]
