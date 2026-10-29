@@ -76,7 +76,9 @@ final class VoiceSession {
     private AudioTrack track;
     private Thread spkThread;
     private final LinkedBlockingQueue<Chunk> playQ = new LinkedBlockingQueue<>();
-    private volatile long framesWritten;
+    private volatile long framesWritten;     // all frames given to the speaker (speech + silence)
+    private volatile long speechEndFrame;    // frame where the last real speech ends
+    private static final byte[] SILENCE = new byte[RATE / 20 * 2]; // 50 ms
     private volatile long lastPlaybackEnd;
     private volatile boolean flushRequested;
     private volatile String playingItemId;
@@ -307,6 +309,10 @@ final class VoiceSession {
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build();
         track.play();
+        // Wake the amplifier before the first answer arrives.
+        byte[] warm = new byte[RATE / 2 * 2]; // 0.5 s
+        int ww = track.write(warm, 0, warm.length);
+        if (ww > 0) framesWritten += ww / 2;
 
         rec.startRecording();
         micThread = new Thread(this::micLoop, "voice-mic");
@@ -391,6 +397,7 @@ final class VoiceSession {
                 return;
             }
             if (c == null) {
+                keepAwake();
                 if (state == State.SPEAKING && !isAssistantAudible()) {
                     lastPlaybackEnd = System.currentTimeMillis();
                     if (!responseActive) setState(State.LISTENING);
@@ -404,7 +411,10 @@ final class VoiceSession {
             for (int off = 0; off < c.pcm.length && running && !flushRequested; off += maxChunk) {
                 int len = Math.min(maxChunk, c.pcm.length - off);
                 int w = track.write(c.pcm, off, len);
-                if (w > 0) framesWritten += w / 2;
+                if (w > 0) {
+                    framesWritten += w / 2;
+                    speechEndFrame = framesWritten;
+                }
                 final float level = rmsBytes(c.pcm, off, len);
                 main.post(() -> listener.onLevel(level));
             }
@@ -417,7 +427,20 @@ final class VoiceSession {
         AudioTrack t = track;
         if (t == null) return false;
         long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
-        return head < framesWritten;
+        return head < speechEndFrame;
+    }
+
+    /**
+     * Feeds a little silence while nobody is talking so the fridge's amplifier
+     * stays powered; otherwise it sleeps and swallows the start of each answer.
+     * Keeps at most ~100 ms queued so real speech isn't delayed.
+     */
+    private void keepAwake() {
+        long head = track.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+        if (framesWritten - head < RATE / 10) {
+            int w = track.write(SILENCE, 0, SILENCE.length);
+            if (w > 0) framesWritten += w / 2;
+        }
     }
 
     /** You started talking while ChatGPT was speaking (barge-in mode). */
@@ -435,6 +458,7 @@ final class VoiceSession {
         track.flush();
         track.play();
         framesWritten = 0;
+        speechEndFrame = 0;
         itemStartFrame = 0;
         playingItemId = null;
         playQ.clear();

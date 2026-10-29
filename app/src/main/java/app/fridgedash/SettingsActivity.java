@@ -326,10 +326,12 @@ public class SettingsActivity extends BaseActivity {
             String msg;
             try {
                 int rate = VoiceSession.RATE;
-                short[] tone = new short[rate];
-                for (int i = 0; i < rate; i++) {
-                    double env = Math.min(1.0, Math.min(i, rate - i) / 2400.0);
-                    tone[i] = (short) (Math.sin(2 * Math.PI * 660 * i / rate) * 12000 * env);
+                int lead = rate * 6 / 10;  // 0.6 s of silence wakes the amplifier first
+                int beep = rate;           // 1 s tone
+                short[] tone = new short[lead + beep];
+                for (int i = 0; i < beep; i++) {
+                    double env = Math.min(1.0, Math.min(i, beep - i) / 2400.0);
+                    tone[lead + i] = (short) (Math.sin(2 * Math.PI * 660 * i / rate) * 12000 * env);
                 }
                 android.media.AudioTrack t = new android.media.AudioTrack.Builder()
                         .setAudioAttributes(new android.media.AudioAttributes.Builder()
@@ -341,10 +343,17 @@ public class SettingsActivity extends BaseActivity {
                         .setTransferMode(android.media.AudioTrack.MODE_STATIC)
                         .build();
                 t.write(tone, 0, tone.length);
+                long started = System.currentTimeMillis();
                 t.play();
-                Thread.sleep(1200);
+                // Wait until it has really finished playing (not a fixed time), up to 5 s.
+                while (System.currentTimeMillis() - started < 5000
+                        && (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) < tone.length) {
+                    Thread.sleep(50);
+                }
+                long took = System.currentTimeMillis() - started;
+                Thread.sleep(200);
                 t.release();
-                msg = "Played a beep. Media volume " + vol + " of " + max
+                msg = "Played a beep (" + took + " ms incl. 600 ms wake-up). Media volume " + vol + " of " + max
                         + (vol == 0 ? " (MUTED: raise the volume)" : "") + ". Did you hear it?";
             } catch (Exception e) {
                 msg = "✗ Couldn't play sound: " + e.getMessage();
