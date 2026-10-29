@@ -71,7 +71,8 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         bar.setPadding(Ui.dp(this, 22), 0, Ui.dp(this, 22), Ui.dp(this, 14));
         caption = new TextView(this);
         caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        caption.setTextColor(0xB3FFFFFF);
+        caption.setTextColor(0xCCFFFFFF);
+        caption.setShadowLayer(6f, 0f, 1f, 0xCC000000); // readable over a full-screen painting
         caption.setMaxLines(1);
         caption.setEllipsize(android.text.TextUtils.TruncateAt.END);
         caption.setText("Loading a painting…");
@@ -81,7 +82,8 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         clock.setFormat12Hour("h:mm");
         clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        clock.setTextColor(0xCCFFFFFF);
+        clock.setTextColor(0xDDFFFFFF);
+        clock.setShadowLayer(6f, 0f, 1f, 0xCC000000);
         bar.addView(clock);
         root.addView(bar, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
@@ -139,6 +141,12 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
 
     private void show(Art.Piece p, Bitmap bmp, Bitmap matte) {
         int back = 1 - front;
+        // Shaped like the screen: fill it edge to edge (a little trimmed). Otherwise show it whole on a matte.
+        double screen = root.getWidth() / (double) Math.max(1, root.getHeight());
+        boolean fill = Art.fits(bmp.getWidth() / (double) bmp.getHeight(), screen);
+        arts[back].setScaleType(fill ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
+        int pad = fill ? 0 : Ui.dp(this, 26);
+        arts[back].setPadding(pad, pad, pad, fill ? 0 : Ui.dp(this, 48));
         arts[back].setImageBitmap(bmp);
         mattes[back].setImageBitmap(matte);
         arts[back].animate().alpha(1f).setDuration(1600).start();

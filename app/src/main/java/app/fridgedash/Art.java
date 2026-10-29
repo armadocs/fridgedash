@@ -33,6 +33,14 @@ final class Art {
 
     static final class Piece {
         String title = "", artist = "", date = "", museum = "", image = "";
+        double ratio;   // width / height of the painting (0 = unknown)
+    }
+
+    /** Within 25% of the screen's shape: fills the screen with only a little trimmed off the edges. */
+    static final double FIT = Math.log(1.25);
+
+    static boolean fits(double ratio, double screen) {
+        return ratio > 0 && Math.abs(Math.log(ratio / screen)) <= FIT;
     }
 
     private static final long LIST_MAX_AGE = 7L * 24 * 3600 * 1000;
@@ -60,7 +68,7 @@ final class Art {
     static List<Piece> list(Context c) throws Exception {
         File f = listFile(c);
         List<Piece> cached = f.exists() ? read(f) : new ArrayList<>();
-        boolean current = Prefs.raw(c).getInt(KEY_LIST_V, 0) == 2; // v2 = both museums
+        boolean current = Prefs.raw(c).getInt(KEY_LIST_V, 0) == 3; // v3 = both museums + shapes
         if (current && !cached.isEmpty() && System.currentTimeMillis() - f.lastModified() < LIST_MAX_AGE) return cached;
         List<Piece> fresh = new ArrayList<>();
         StringBuilder errors = new StringBuilder();
@@ -74,12 +82,12 @@ final class Art {
         JSONArray a = new JSONArray();
         for (Piece p : fresh) {
             a.put(new JSONObject().put("t", p.title).put("a", p.artist).put("d", p.date)
-                    .put("m", p.museum).put("i", p.image));
+                    .put("m", p.museum).put("i", p.image).put("r", p.ratio));
         }
         try (FileOutputStream out = new FileOutputStream(f)) {
             out.write(a.toString().getBytes(StandardCharsets.UTF_8));
         }
-        Prefs.raw(c).edit().putInt(KEY_LIST_V, 2).apply();
+        Prefs.raw(c).edit().putInt(KEY_LIST_V, 3).apply();
         return fresh;
     }
 
@@ -94,7 +102,7 @@ final class Art {
                 JSONObject o = a.getJSONObject(i);
                 Piece p = new Piece();
                 p.title = o.optString("t"); p.artist = o.optString("a"); p.date = o.optString("d");
-                p.museum = o.optString("m"); p.image = o.optString("i");
+                p.museum = o.optString("m"); p.image = o.optString("i"); p.ratio = o.optDouble("r", 0);
                 if (!p.image.isEmpty()) out.add(p);
             }
         } catch (Exception ignored) {
@@ -104,14 +112,31 @@ final class Art {
 
     /** Art Institute of Chicago: public-domain paintings the museum highlights ("boosted"). */
     private static List<Piece> chicago() throws Exception {
+        List<Piece> out = new ArrayList<>();
+        for (int page = 1; page <= 3; page++) {
+            try {
+                List<Piece> got = chicagoPage(page);
+                out.addAll(got);
+                if (got.size() < 50) break;
+            } catch (Exception e) {
+                if (out.isEmpty()) throw e;
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static List<Piece> chicagoPage(int page) throws Exception {
         JSONObject query = new JSONObject().put("bool", new JSONObject().put("must", new JSONArray()
                 .put(new JSONObject().put("term", new JSONObject().put("is_public_domain", true)))
                 .put(new JSONObject().put("term", new JSONObject().put("is_boosted", true)))
                 .put(new JSONObject().put("term", new JSONObject().put("artwork_type_id", 1))))); // 1 = Painting
         JSONObject body = new JSONObject()
                 .put("query", query)
-                .put("fields", new JSONArray().put("id").put("title").put("artist_title").put("date_display").put("image_id"))
-                .put("limit", 100);
+                .put("fields", new JSONArray().put("id").put("title").put("artist_title").put("date_display")
+                        .put("image_id").put("thumbnail"))
+                .put("limit", 100)
+                .put("page", page);
         Request req = new Request.Builder()
                 .url("https://api.artic.edu/api/v1/artworks/search")
                 .header("AIC-User-Agent", UA)
@@ -131,6 +156,12 @@ final class Art {
             p.date = o.optString("date_display", "");
             p.museum = "Art Institute of Chicago";
             p.image = "https://www.artic.edu/iiif/2/" + id + "/full/1686,/0/default.jpg";
+            JSONObject th = o.optJSONObject("thumbnail");
+            if (th != null && th.optDouble("height", 0) > 0) {
+                // Skip small scans: they'd look soft on a big screen.
+                if (Math.min(th.optDouble("width"), th.optDouble("height")) < 1000) continue;
+                p.ratio = th.optDouble("width") / th.optDouble("height");
+            }
             out.add(p);
         }
         return out;
@@ -138,38 +169,73 @@ final class Art {
 
     /** The Met: highlighted European paintings with open-access images. */
     private static List<Piece> met() throws Exception {
-        JSONObject s = new JSONObject(text(new Request.Builder()
-                .url("https://collectionapi.metmuseum.org/public/collection/v1/search?departmentId=11&isHighlight=true&hasImages=true&q=painting")
-                .header("User-Agent", UA).build()));
-        JSONArray ids = s.optJSONArray("objectIDs");
-        List<Piece> out = new ArrayList<>();
-        if (ids == null) return out;
-        for (int i = 0; i < ids.length() && i < 120 && out.size() < 60; i++) {
-            try {
-                JSONObject o = new JSONObject(text(new Request.Builder()
-                        .url("https://collectionapi.metmuseum.org/public/collection/v1/objects/" + ids.getInt(i))
-                        .header("User-Agent", UA).build()));
-                String img = o.optString("primaryImage", "");
-                if (!o.optBoolean("isPublicDomain") || img.isEmpty()) continue;
-                Piece p = new Piece();
-                p.title = o.optString("title");
-                p.artist = o.optString("artistDisplayName");
-                p.date = o.optString("objectDate");
-                p.museum = "The Metropolitan Museum of Art";
-                p.image = img;
-                out.add(p);
-            } catch (Exception ignored) {
-            }
+        // European paintings (11) and the American Wing (1, rich in wide landscapes).
+        List<Integer> ids = new ArrayList<>();
+        for (int dept : new int[]{11, 1}) {
+            JSONObject s = new JSONObject(text(new Request.Builder()
+                    .url("https://collectionapi.metmuseum.org/public/collection/v1/search?departmentId=" + dept
+                            + "&isHighlight=true&hasImages=true&q=painting")
+                    .header("User-Agent", UA).build()));
+            JSONArray a = s.optJSONArray("objectIDs");
+            if (a != null) for (int i = 0; i < a.length() && i < 130; i++) ids.add(a.getInt(i));
         }
-        return out;
+        final List<Piece> out = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
+        for (final int id : ids) {
+            pool.execute(() -> {
+                try {
+                    JSONObject o = new JSONObject(text(new Request.Builder()
+                            .url("https://collectionapi.metmuseum.org/public/collection/v1/objects/" + id)
+                            .header("User-Agent", UA).build()));
+                    String img = o.optString("primaryImage", "");
+                    if (!o.optBoolean("isPublicDomain") || img.isEmpty()) return;
+                    if (!o.optString("classification").toLowerCase(java.util.Locale.ROOT).contains("painting")) return;
+                    Piece p = new Piece();
+                    p.title = o.optString("title");
+                    p.artist = o.optString("artistDisplayName");
+                    p.date = o.optString("objectDate");
+                    p.museum = "The Metropolitan Museum of Art";
+                    p.image = img;
+                    p.ratio = metRatio(o);
+                    out.add(p);
+                } catch (Exception ignored) {
+                }
+            });
+        }
+        pool.shutdown();
+        pool.awaitTermination(120, TimeUnit.SECONDS);
+        return new ArrayList<>(out);
+    }
+
+    /** Shape from the Met's physical measurements (the painting's own height and width). */
+    private static double metRatio(JSONObject o) {
+        JSONArray m = o.optJSONArray("measurements");
+        if (m == null) return 0;
+        for (int i = 0; i < m.length(); i++) {
+            JSONObject e = m.optJSONObject(i);
+            JSONObject em = e == null ? null : e.optJSONObject("elementMeasurements");
+            if (em == null) continue;
+            double hh = em.optDouble("Height", 0), ww = em.optDouble("Width", 0);
+            if (hh > 0 && ww > 0) return ww / hh;
+        }
+        return 0;
     }
 
     // ------------------------------------------------------------------ images
 
     /** Picks a random painting (not the last one) and decodes it for a w×h screen. */
     static Object[] next(Context c, int w, int h, String avoid) throws Exception {
-        List<Piece> all = list(c);
-        if (all.isEmpty()) throw new IOException("no paintings");
+        List<Piece> everything = list(c);
+        if (everything.isEmpty()) throw new IOException("no paintings");
+        // Only paintings shaped like the screen; if there are too few, at least the same orientation.
+        double screen = w / (double) h;
+        List<Piece> all = new ArrayList<>();
+        for (Piece p : everything) if (fits(p.ratio, screen)) all.add(p);
+        if (all.size() < 8) {
+            all.clear();
+            for (Piece p : everything) if (p.ratio > 0 && (p.ratio > 1) == (screen > 1)) all.add(p);
+        }
+        if (all.isEmpty()) all = everything;
         StringBuilder errs = new StringBuilder();
         for (int attempt = 0; attempt < 8; attempt++) {
             Piece p = all.get(rnd.nextInt(all.size()));
@@ -187,7 +253,11 @@ final class Art {
                         rb.header("AIC-User-Agent", UA).header("Referer", "https://www.artic.edu/");
                     }
                     Bitmap bmp = decode(bytes(rb.build()), w, h);
-                    if (bmp != null) return new Object[]{p, bmp};
+                    if (bmp == null) continue;
+                    // Too small to fill this screen sharply? Try another painting.
+                    double scale = Math.max(w / (double) bmp.getWidth(), h / (double) bmp.getHeight());
+                    if (scale > 2.3) { bmp.recycle(); errs.append("low resolution; "); continue; }
+                    return new Object[]{p, bmp};
                 } catch (Exception e) {
                     if (errs.length() < 120) errs.append(Uri.parse(url).getHost()).append(" ").append(e.getMessage()).append("; ");
                 }
