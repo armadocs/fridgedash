@@ -63,5 +63,10 @@ final class Prefs {
     static String micScan(Context c) { return p(c).getString("mic_scan", ""); }
     static void setMicScan(Context c, String v) { p(c).edit().putString("mic_scan", v).apply(); }
 
+    /** Software microphone boost (the fridge's mic array is very quiet). */
+    static final int[] MIC_GAINS = {1, 4, 8, 12, 16, 24};
+    static int micGain(Context c) { return p(c).getInt("mic_gain", 12); }
+    static void setMicGain(Context c, int v) { p(c).edit().putInt("mic_gain", v).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

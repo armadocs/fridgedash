@@ -42,6 +42,7 @@ public class SettingsActivity extends BaseActivity {
     private EditText keyField, modelField;
     private TextView homeButton;
     private TextView inputButton;
+    private TextView gainButton;
     private TextView keyStatus, micStatus, voiceButton, bargeButton, wallButton, sizeButton, updateStatus;
     private boolean keyVisible;
     private UpdateFlow updates;
@@ -112,6 +113,11 @@ public class SettingsActivity extends BaseActivity {
         testRow.addView(button("Test speaker", v -> testSpeaker(), false), weighted());
         col.addView(testRow);
         col.addView(button("Deep microphone scan (≈35 s, clap the whole time)", v -> deepScan(), false), full());
+        gainButton = button("", v -> cycleGain(), false);
+        col.addView(gainButton, full());
+        refreshGain();
+        col.addView(note("Boost makes the fridge's quiet built-in microphone louder for ChatGPT. "
+                + "If it doesn't react when you talk, raise it; if it reacts to every kitchen noise, lower it."));
         micStatus = note("");
         col.addView(micStatus);
 
@@ -264,6 +270,18 @@ public class SettingsActivity extends BaseActivity {
         String now = Prefs.useKeyboard(this) ? "keyboard" : "microphone";
         inputButton.setText("Talk to ChatGPT with: " + ("auto".equals(m) ? "Automatic (" + now + ")"
                 : "keyboard".equals(m) ? "Keyboard" : "Microphone") + "   (tap to change)");
+    }
+
+    private void cycleGain() {
+        int cur = Prefs.micGain(this), next = Prefs.MIC_GAINS[0];
+        for (int i = 0; i < Prefs.MIC_GAINS.length; i++)
+            if (Prefs.MIC_GAINS[i] == cur) next = Prefs.MIC_GAINS[(i + 1) % Prefs.MIC_GAINS.length];
+        Prefs.setMicGain(this, next);
+        refreshGain();
+    }
+
+    private void refreshGain() {
+        gainButton.setText("Microphone boost: ×" + Prefs.micGain(this) + "   (tap to change)");
     }
 
     private void refreshVoice() {

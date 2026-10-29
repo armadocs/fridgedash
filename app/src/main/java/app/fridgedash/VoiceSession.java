@@ -74,6 +74,7 @@ final class VoiceSession {
     private int recRate;
     private int recChannels = 1;     // >1 when the deep scan found sound on one channel of a mic array
     private int recChannel = 0;
+    private int micGain = 1;
     private Thread micThread;
     private AcousticEchoCanceler aec;
     private NoiseSuppressor ns;
@@ -375,6 +376,7 @@ final class VoiceSession {
             if (cfg != null) {
                 AudioRecord r = MicScan.open(cfg);
                 if (r != null) {
+                    micGain = Prefs.micGain(ctx);
                     recRate = cfg.rate;
                     recChannels = cfg.channels;
                     recChannel = cfg.channel;
@@ -455,6 +457,7 @@ final class VoiceSession {
                 n = MicScan.extract(buf, n, recChannels, recChannel, mono);
                 src = mono;
             }
+            if (micGain > 1) applyGain(src, n, micGain);
             final short[] samples = src;
             float level = rms(samples, n);
 
@@ -585,6 +588,16 @@ final class VoiceSession {
     private void fail(String msg) {
         main.post(() -> listener.onError(msg, true));
         main.post(this::stop);
+    }
+
+    /** Boosts quiet audio; soft-limits instead of hard clipping. */
+    static void applyGain(short[] b, int n, int gain) {
+        for (int i = 0; i < n; i++) {
+            double v = b[i] * (double) gain / 32768.0;
+            if (v > 0.8) v = 0.8 + 0.2 * Math.tanh((v - 0.8) / 0.2);
+            else if (v < -0.8) v = -0.8 + 0.2 * Math.tanh((v + 0.8) / 0.2);
+            b[i] = (short) Math.round(v * 32767.0);
+        }
     }
 
     /** Linear resample to 24 kHz and encode as little-endian PCM16. */
