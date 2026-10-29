@@ -3,6 +3,7 @@ package app.fridgedash;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -36,6 +37,10 @@ final class Art {
 
     private static final long LIST_MAX_AGE = 7L * 24 * 3600 * 1000;
     private static final String UA = "FridgeDash art mode (personal home display)";
+    /** Image servers sit behind bot protection that turns away non-browser requests. */
+    private static final String BROWSER_UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+    private static final String KEY_LIST_V = "art_list_v";
     private static OkHttpClient http;
     private static final Random rnd = new Random();
 
@@ -55,13 +60,13 @@ final class Art {
     static List<Piece> list(Context c) throws Exception {
         File f = listFile(c);
         List<Piece> cached = f.exists() ? read(f) : new ArrayList<>();
-        if (!cached.isEmpty() && System.currentTimeMillis() - f.lastModified() < LIST_MAX_AGE) return cached;
+        boolean current = Prefs.raw(c).getInt(KEY_LIST_V, 0) == 2; // v2 = both museums
+        if (current && !cached.isEmpty() && System.currentTimeMillis() - f.lastModified() < LIST_MAX_AGE) return cached;
         List<Piece> fresh = new ArrayList<>();
         StringBuilder errors = new StringBuilder();
         try { fresh.addAll(chicago()); } catch (Exception e) { errors.append("Art Institute: ").append(e.getMessage()).append(". "); }
-        if (fresh.size() < 20) {
-            try { fresh.addAll(met()); } catch (Exception e) { errors.append("The Met: ").append(e.getMessage()).append(". "); }
-        }
+        // Always mix in The Met, so one museum blocking images can't leave the screen empty.
+        try { fresh.addAll(met()); } catch (Exception e) { errors.append("The Met: ").append(e.getMessage()).append(". "); }
         if (fresh.isEmpty()) {
             if (!cached.isEmpty()) return cached;
             throw new IOException(errors.length() == 0 ? "no paintings found" : errors.toString().trim());
@@ -74,6 +79,7 @@ final class Art {
         try (FileOutputStream out = new FileOutputStream(f)) {
             out.write(a.toString().getBytes(StandardCharsets.UTF_8));
         }
+        Prefs.raw(c).edit().putInt(KEY_LIST_V, 2).apply();
         return fresh;
     }
 
@@ -138,7 +144,7 @@ final class Art {
         JSONArray ids = s.optJSONArray("objectIDs");
         List<Piece> out = new ArrayList<>();
         if (ids == null) return out;
-        for (int i = 0; i < ids.length() && out.size() < 40; i++) {
+        for (int i = 0; i < ids.length() && i < 120 && out.size() < 60; i++) {
             try {
                 JSONObject o = new JSONObject(text(new Request.Builder()
                         .url("https://collectionapi.metmuseum.org/public/collection/v1/objects/" + ids.getInt(i))
@@ -164,19 +170,30 @@ final class Art {
     static Object[] next(Context c, int w, int h, String avoid) throws Exception {
         List<Piece> all = list(c);
         if (all.isEmpty()) throw new IOException("no paintings");
-        Exception last = null;
-        for (int attempt = 0; attempt < 4; attempt++) {
+        StringBuilder errs = new StringBuilder();
+        for (int attempt = 0; attempt < 8; attempt++) {
             Piece p = all.get(rnd.nextInt(all.size()));
             if (p.image.equals(avoid) && all.size() > 1) continue;
-            try {
-                byte[] b = bytes(new Request.Builder().url(p.image).header("User-Agent", UA).build());
-                Bitmap bmp = decode(b, w, h);
-                if (bmp != null) return new Object[]{p, bmp};
-            } catch (Exception e) {
-                last = e;
+            // The Art Institute caches 843-px-wide images; larger ones are sometimes refused.
+            String[] urls = p.image.contains("/full/1686,/")
+                    ? new String[]{p.image, p.image.replace("/full/1686,/", "/full/843,/")}
+                    : new String[]{p.image};
+            for (String url : urls) {
+                try {
+                    Request.Builder rb = new Request.Builder().url(url)
+                            .header("User-Agent", BROWSER_UA)
+                            .header("Accept", "image/avif,image/webp,image/*,*/*;q=0.8");
+                    if (url.contains("artic.edu")) {
+                        rb.header("AIC-User-Agent", UA).header("Referer", "https://www.artic.edu/");
+                    }
+                    Bitmap bmp = decode(bytes(rb.build()), w, h);
+                    if (bmp != null) return new Object[]{p, bmp};
+                } catch (Exception e) {
+                    if (errs.length() < 120) errs.append(Uri.parse(url).getHost()).append(" ").append(e.getMessage()).append("; ");
+                }
             }
         }
-        throw last != null ? last : new IOException("couldn't load a painting");
+        throw new IOException(errs.length() == 0 ? "couldn't load a painting" : errs.toString());
     }
 
     private static Bitmap decode(byte[] b, int w, int h) {
