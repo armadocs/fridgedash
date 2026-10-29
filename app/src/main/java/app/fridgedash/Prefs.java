@@ -124,5 +124,9 @@ final class Prefs {
     static int artIntervalMin(Context c) { return p(c).getInt("art_interval_min", 5); }
     static void setArtIntervalMin(Context c, int v) { p(c).edit().putInt("art_interval_min", v).apply(); }
 
+    /** "auto" (follow the device), "portrait" or "landscape": for frames that don't rotate on their own. */
+    static String orientation(Context c) { return p(c).getString("orientation", "auto"); }
+    static void setOrientation(Context c, String v) { p(c).edit().putString("orientation", v).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

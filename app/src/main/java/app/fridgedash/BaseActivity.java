@@ -14,6 +14,20 @@ import android.view.WindowManager;
 public class BaseActivity extends Activity {
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        applyOrientation();
+    }
+
+    void applyOrientation() {
+        String o = Prefs.orientation(this);
+        int want = "portrait".equals(o) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                : "landscape".equals(o) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+        if (getRequestedOrientation() != want) setRequestedOrientation(want);
+    }
+
+    @Override
     protected void attachBaseContext(Context newBase) {
         super.attachBaseContext(newBase);
         try {

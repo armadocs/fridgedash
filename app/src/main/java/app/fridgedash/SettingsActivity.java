@@ -49,7 +49,7 @@ public class SettingsActivity extends BaseActivity {
     private TextView notionStatus;
     private TextView gainButton;
     private TextView remoteStatus, remoteButton;
-    private TextView artIdleButton, artIntervalButton;
+    private TextView artIdleButton, artIntervalButton, orientButton;
     private final Runnable remoteTick = new Runnable() {
         @Override public void run() {
             refreshRemote();
@@ -290,6 +290,15 @@ public class SettingsActivity extends BaseActivity {
         col.addView(wallButton, full());
         refreshWallpaperButton();
         col.addView(button("Get today's photo now", v -> fetchPhotoNow(), false), full());
+
+        orientButton = button("", v -> {
+            String o = Prefs.orientation(this);
+            Prefs.setOrientation(this, "auto".equals(o) ? "landscape" : "landscape".equals(o) ? "portrait" : "auto");
+            refreshOrient();
+            applyOrientation();
+        }, false);
+        col.addView(orientButton, full());
+        refreshOrient();
 
         sizeButton = button("", v -> cycleSize(), false);
         col.addView(sizeButton, full());
@@ -599,6 +608,12 @@ public class SettingsActivity extends BaseActivity {
         String now = Prefs.useKeyboard(this) ? "keyboard" : "microphone";
         inputButton.setText("Talk to ChatGPT with: " + ("auto".equals(m) ? "Automatic (" + now + ")"
                 : "keyboard".equals(m) ? "Keyboard" : "Microphone") + "   (tap to change)");
+    }
+
+    private void refreshOrient() {
+        String o = Prefs.orientation(this);
+        orientButton.setText("Screen orientation: " + ("landscape".equals(o) ? "Landscape" : "portrait".equals(o)
+                ? "Portrait" : "Automatic") + "   (tap to change)");
     }
 
     private static int nextOf(int[] options, int cur) {
