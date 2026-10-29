@@ -49,6 +49,7 @@ public class SettingsActivity extends BaseActivity {
     private TextView notionStatus;
     private TextView gainButton;
     private TextView remoteStatus, remoteButton;
+    private TextView artIdleButton, artIntervalButton;
     private final Runnable remoteTick = new Runnable() {
         @Override public void run() {
             refreshRemote();
@@ -293,6 +294,28 @@ public class SettingsActivity extends BaseActivity {
         sizeButton = button("", v -> cycleSize(), false);
         col.addView(sizeButton, full());
         refreshSize();
+
+        // ---------------------------------------------------------- Art mode
+        section("Art mode");
+        col.addView(note("When nobody uses the screen, famous paintings fill it (public-domain masterpieces from the "
+                + "Art Institute of Chicago and the Met, a new one every few minutes). Touch, a key, the mouse or "
+                + "someone coming close brings the dashboard back. The screen stays on while this is enabled."));
+        artIdleButton = button("", v -> {
+            Prefs.setArtIdleMin(this, nextOf(Prefs.ART_IDLE, Prefs.artIdleMin(this)));
+            refreshArt();
+        }, false);
+        col.addView(artIdleButton, full());
+        artIntervalButton = button("", v -> {
+            Prefs.setArtIntervalMin(this, nextOf(Prefs.ART_INTERVAL, Prefs.artIntervalMin(this)));
+            refreshArt();
+        }, false);
+        col.addView(artIntervalButton, full());
+        col.addView(button("Show art now", v -> startActivity(new Intent(this, ArtActivity.class)), true), full());
+        String sensor = Presence.describe(this);
+        col.addView(note(sensor.isEmpty()
+                ? "No proximity sensor found on this device: touch, a key or the mouse wakes the dashboard."
+                : "Proximity sensor found (" + sensor + "): coming close wakes the dashboard."));
+        refreshArt();
 
         // ---------------------------------------------------------- FridgeDash
         section("FridgeDash");
@@ -576,6 +599,17 @@ public class SettingsActivity extends BaseActivity {
         String now = Prefs.useKeyboard(this) ? "keyboard" : "microphone";
         inputButton.setText("Talk to ChatGPT with: " + ("auto".equals(m) ? "Automatic (" + now + ")"
                 : "keyboard".equals(m) ? "Keyboard" : "Microphone") + "   (tap to change)");
+    }
+
+    private static int nextOf(int[] options, int cur) {
+        for (int i = 0; i < options.length; i++) if (options[i] == cur) return options[(i + 1) % options.length];
+        return options[0];
+    }
+
+    private void refreshArt() {
+        int idle = Prefs.artIdleMin(this), every = Prefs.artIntervalMin(this);
+        artIdleButton.setText("Show art when idle: " + (idle == 0 ? "Off" : "after " + idle + " min") + "   (tap to change)");
+        artIntervalButton.setText("New painting every: " + every + " min   (tap to change)");
     }
 
     private void refreshRemote() {

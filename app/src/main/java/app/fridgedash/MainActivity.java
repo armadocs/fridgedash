@@ -43,6 +43,19 @@ public class MainActivity extends BaseActivity {
     };
     private boolean wallpaperBusy;
     private TextView weatherIcon, weatherTemp, weatherSub;
+    private Presence presence;
+    private long lastActivity = System.currentTimeMillis();
+    private final Runnable idleCheck = new Runnable() {
+        @Override public void run() {
+            int idle = Prefs.artIdleMin(MainActivity.this);
+            if (idle > 0 && System.currentTimeMillis() - lastActivity > idle * 60_000L) {
+                startActivity(new Intent(MainActivity.this, ArtActivity.class));
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                return;
+            }
+            main.postDelayed(this, 10_000);
+        }
+    };
     private boolean weatherBusy;
     private static final long WEATHER_CHECK_MS = 10 * 60 * 1000;
     private final Runnable weatherTimer = new Runnable() {
@@ -88,8 +101,10 @@ public class MainActivity extends BaseActivity {
         // Size is known after the first layout; load the wallpaper then (and when it changes).
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (v.getWidth() != loadedW || v.getHeight() != loadedH) loadWallpaper();
+            fitContent(v.getWidth(), v.getHeight());
         });
 
+        presence = new Presence(this, () -> lastActivity = System.currentTimeMillis());
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         watchNetwork();
         Tools.warmUp(this);                // finds the home city once, for weather questions
@@ -110,6 +125,34 @@ public class MainActivity extends BaseActivity {
         showWeather(Weather.cached(this));
         main.removeCallbacks(weatherTimer);
         main.post(weatherTimer);
+        // Art mode: keep the screen on (paintings replace the screen going dark) and watch for idleness.
+        lastActivity = System.currentTimeMillis();
+        boolean art = Prefs.artIdleMin(this) > 0;
+        if (art) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        main.removeCallbacks(idleCheck);
+        if (art) {
+            presence.start();
+            main.postDelayed(idleCheck, 10_000);
+        }
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        lastActivity = System.currentTimeMillis();
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
+        lastActivity = System.currentTimeMillis();
+        return super.dispatchKeyEvent(ev);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(android.view.MotionEvent ev) {
+        lastActivity = System.currentTimeMillis();
+        return super.dispatchGenericMotionEvent(ev);
     }
 
     @Override
@@ -117,6 +160,18 @@ public class MainActivity extends BaseActivity {
         super.onPause();
         main.removeCallbacks(briefTimer);
         main.removeCallbacks(weatherTimer);
+        main.removeCallbacks(idleCheck);
+        presence.stop();
+    }
+
+    /** On a landscape screen (e.g. a picture frame), keep the dashboard a readable centred column. */
+    private void fitContent(int w, int h) {
+        View content = findViewById(R.id.content);
+        int max = Ui.dp(this, 640);
+        int side = w > h && w > max ? (w - max) / 2 : Ui.dp(this, 24);
+        if (content.getPaddingStart() != side) {
+            content.post(() -> content.setPaddingRelative(side, content.getPaddingTop(), side, content.getPaddingBottom()));
+        }
     }
 
     // ------------------------------------------------------------------ weather

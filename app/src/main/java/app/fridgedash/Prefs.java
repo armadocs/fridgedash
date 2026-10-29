@@ -116,5 +116,13 @@ final class Prefs {
     static String extraInstructions(Context c) { return p(c).getString("extra_instructions", "").trim(); }
     static void setExtraInstructions(Context c, String v) { p(c).edit().putString("extra_instructions", v == null ? "" : v.trim()).apply(); }
 
+    /** Art mode: minutes of no activity before paintings appear (0 = off), and how often they change. */
+    static final int[] ART_IDLE = {0, 1, 2, 5, 10, 30};
+    static final int[] ART_INTERVAL = {1, 5, 15, 60};
+    static int artIdleMin(Context c) { return p(c).getInt("art_idle_min", 0); }
+    static void setArtIdleMin(Context c, int v) { p(c).edit().putInt("art_idle_min", v).apply(); }
+    static int artIntervalMin(Context c) { return p(c).getInt("art_interval_min", 5); }
+    static void setArtIntervalMin(Context c, int v) { p(c).edit().putInt("art_interval_min", v).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }
