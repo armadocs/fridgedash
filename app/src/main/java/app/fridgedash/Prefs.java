@@ -91,5 +91,9 @@ final class Prefs {
     static String linkHost(Context c) { return p(c).getString("link_host", "").trim(); }
     static void setLinkHost(Context c, String v) { p(c).edit().putString("link_host", v == null ? "" : v.trim()).apply(); }
 
+    /** Home city for weather and local answers; empty = worked out from the internet address. */
+    static String homeCity(Context c) { return p(c).getString("home_city", "").trim(); }
+    static void setHomeCity(Context c, String v) { p(c).edit().putString("home_city", v == null ? "" : v.trim()).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

@@ -272,8 +272,11 @@ final class VoiceSession {
             }
             case "response.output_item.done": {
                 JSONObject item = ev.optJSONObject("item");
-                if (item != null && "function_call".equals(item.optString("type"))
-                        && "end_call".equals(item.optString("name"))) requestHangUp();
+                if (item != null && "function_call".equals(item.optString("type"))) {
+                    String name = item.optString("name");
+                    if ("end_call".equals(name)) requestHangUp();
+                    else if (Tools.handles(name)) runTool(name, item.optString("call_id"), item.optString("arguments"));
+                }
                 break;
             }
             case "response.function_call_arguments.done":
@@ -324,9 +327,9 @@ final class VoiceSession {
                     .put("voice", voice);
             JSONObject session = new JSONObject()
                     .put("type", "realtime")
-                    .put("instructions", instructions())
+                    .put("instructions", instructions(ctx))
                     .put("output_modalities", new org.json.JSONArray().put("audio"))
-                    .put("tools", new org.json.JSONArray().put(new JSONObject()
+                    .put("tools", Tools.definitions().put(new JSONObject()
                             .put("type", "function")
                             .put("name", "end_call")
                             .put("description", "Hang up and close the voice screen. Use when the user says "
@@ -341,7 +344,8 @@ final class VoiceSession {
         }
     }
 
-    private static String instructions() {
+    private static String instructions(android.content.Context c) {
+        String home = Tools.homeName(c);
         SimpleDateFormat f = new SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a zzzz", Locale.US);
         f.setTimeZone(TimeZone.getDefault());
         return "You are ChatGPT, talking by voice through the screen on a kitchen refrigerator. "
@@ -350,6 +354,10 @@ final class VoiceSession {
                 + "When the user says stop, bye, that's all or otherwise ends the conversation, say a very short "
                 + "goodbye (two or three words) and call end_call. "
                 + "If they only want you to stop talking mid-answer but keep going, just stop and wait. "
+                + "You can look things up: use get_weather for weather and web_search for news, sports, prices, "
+                + "opening hours or anything current. Never say you have no internet or real-time access; look it up. "
+                + "Before a web_search, say a few words like \"Let me check.\" "
+                + (home.isEmpty() ? "" : "The fridge is at the user's home in " + home + ". ")
                 + "Right now it is " + f.format(new Date()) + ".";
     }
 
@@ -634,6 +642,31 @@ final class VoiceSession {
             int w = track.write(SILENCE, 0, SILENCE.length);
             if (w > 0) framesWritten += w / 2;
         }
+    }
+
+    /** Runs a lookup off the network thread, then hands the result back so ChatGPT can answer. */
+    private void runTool(String name, String callId, String args) {
+        lastActivity = System.currentTimeMillis();
+        setState(State.THINKING);
+        new Thread(() -> {
+            String result = Tools.run(ctx, name, args);
+            if (!running) return;
+            try {
+                JSONObject item = new JSONObject()
+                        .put("type", "function_call_output")
+                        .put("call_id", callId)
+                        .put("output", result);
+                send(new JSONObject().put("type", "conversation.item.create").put("item", item).toString());
+            } catch (JSONException e) {
+                return;
+            }
+            // Wait for the turn that asked for the lookup to finish before asking for the answer.
+            for (int i = 0; i < 60 && responseActive && running; i++) {
+                try { Thread.sleep(50); } catch (InterruptedException e) { return; }
+            }
+            lastActivity = System.currentTimeMillis();
+            send("{\"type\":\"response.create\"}");
+        }, "voice-tool-" + name).start();
     }
 
     private void requestHangUp() {

@@ -39,7 +39,7 @@ public class SettingsActivity extends BaseActivity {
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private LinearLayout col;
-    private EditText keyField, modelField;
+    private EditText keyField, modelField, cityField;
     private TextView homeButton;
     private TextView inputButton;
     private EditText briefUrlField, briefTokenField;
@@ -105,6 +105,18 @@ public class SettingsActivity extends BaseActivity {
         col.addView(note("Keyboard: type your question, ChatGPT answers out loud. Automatic uses the "
                 + "microphone only if \"Test microphone\" found a working one."));
         refreshInput();
+
+        col.addView(text("Your city (for weather and local answers)", 12, false));
+        cityField = new EditText(this);
+        cityField.setSingleLine(true);
+        cityField.setHint(Tools.homeName(this).isEmpty() ? "e.g. Belgrade" : "Automatic: " + Tools.homeName(this));
+        cityField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        cityField.setTextColor(getColor(R.color.text));
+        cityField.setHintTextColor(getColor(R.color.text_dim));
+        cityField.setText(Prefs.homeCity(this));
+        col.addView(cityField);
+        col.addView(note("Leave empty to work it out automatically. ChatGPT can check the weather and search the web "
+                + "(news, sports, prices, opening hours); searches use your OpenAI key and cost about a cent each."));
 
         voiceButton = button("", v -> cycleVoice(), false);
         col.addView(voiceButton, full());
@@ -287,6 +299,7 @@ public class SettingsActivity extends BaseActivity {
         // Save typed values when leaving.
         Prefs.setApiKey(this, keyField.getText().toString());
         Prefs.setModel(this, modelField.getText().toString());
+        Prefs.setHomeCity(this, cityField.getText().toString());
         Prefs.setBriefUrl(this, briefUrlField.getText().toString());
         Prefs.setBriefToken(this, briefTokenField.getText().toString());
         Prefs.setNotionToken(this, notionField.getText().toString());
