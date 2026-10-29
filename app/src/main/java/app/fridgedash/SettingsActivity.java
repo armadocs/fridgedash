@@ -136,7 +136,7 @@ public class SettingsActivity extends BaseActivity {
         section("Daily brief");
         col.addView(note("Grok saves the brief as brief.json in your private GitHub repo; the fridge reads it "
                 + "every 5 minutes. Paste a read-only GitHub key (fine-grained token with Contents: Read-only "
-                + "on armadocs/fridge-brief)."));
+                + "on armadocs/daily-brief)."));
         col.addView(text("Brief file link", 12, false));
         briefUrlField = new EditText(this);
         briefUrlField.setSingleLine(true);

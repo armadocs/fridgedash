@@ -1,7 +1,7 @@
 # Daily brief format (brief.json)
 
 FridgeDash reads one JSON file, by default
-`https://api.github.com/repos/armadocs/fridge-brief/contents/brief.json`
+`https://api.github.com/repos/armadocs/daily-brief/contents/brief.json`
 (a **private** repo, read with a fine-grained token that has *Contents: Read-only*).
 It refreshes every 5 minutes. Check-offs are stored on the fridge, per `date`.
 

@@ -38,7 +38,7 @@ import java.util.List;
  */
 final class Brief {
 
-    static final String DEFAULT_URL = "https://api.github.com/repos/armadocs/fridge-brief/contents/brief.json";
+    static final String DEFAULT_URL = "https://api.github.com/repos/armadocs/daily-brief/contents/brief.json";
 
     static final class Item {
         String id, title, detail, when;
