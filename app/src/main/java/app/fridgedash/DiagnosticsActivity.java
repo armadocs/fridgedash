@@ -80,7 +80,7 @@ public class DiagnosticsActivity extends BaseActivity {
 
         LinearLayout actions = row();
         actions.addView(button("Save report to Download", v -> saveReport()), weighted());
-        actions.addView(button("Share report", v -> shareReport()), weighted());
+        actions.addView(button("Send report (Bluetooth…)", v -> shareReport()), weighted());
         actions.addView(button("Back", v -> finish()), weighted());
         root.addView(actions);
 
@@ -386,7 +386,13 @@ public class DiagnosticsActivity extends BaseActivity {
         }
         Collections.sort(lines, c);
         for (String l : lines) sb.append("- ").append(l).append('\n');
+        sb.append('\n');
 
+        try {
+            sb.append(Probe.run(ctx));
+        } catch (Throwable t) {
+            sb.append("Deep probe failed: ").append(t).append('\n');
+        }
         return sb.toString();
     }
 
@@ -451,12 +457,22 @@ public class DiagnosticsActivity extends BaseActivity {
         }
     }
 
+    /** Shares the report as a .txt file, so it can go to a phone over Bluetooth. */
     private void shareReport() {
-        Intent send = new Intent(Intent.ACTION_SEND);
-        send.setType("text/plain");
-        send.putExtra(Intent.EXTRA_SUBJECT, "FridgeDash diagnostics");
-        send.putExtra(Intent.EXTRA_TEXT, report);
-        Ui.start(this, Intent.createChooser(send, "Share report"));
+        try {
+            File f = ApkProvider.reportFile(this);
+            try (FileOutputStream out = new FileOutputStream(f)) {
+                out.write(report.getBytes(StandardCharsets.UTF_8));
+            }
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_STREAM, ApkProvider.REPORT_URI);
+            send.putExtra(Intent.EXTRA_SUBJECT, "FridgeDash diagnostics");
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Ui.start(this, Intent.createChooser(send, "Send report").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+        } catch (Exception e) {
+            Toast.makeText(this, "Couldn't prepare the report: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     // ---------------------------------------------------------------- tiny view helpers

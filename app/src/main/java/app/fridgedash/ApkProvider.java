@@ -20,6 +20,16 @@ public class ApkProvider extends ContentProvider {
     static final String AUTHORITY = "app.fridgedash.apk";
     static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY + "/fridgedash.apk");
     static final String APK_MIME = "application/vnd.android.package-archive";
+    /** The diagnostics report, shared as a .txt file (e.g. to a phone over Bluetooth). */
+    static final Uri REPORT_URI = Uri.parse("content://" + AUTHORITY + "/fridgedash-report.txt");
+
+    static File reportFile(android.content.Context c) {
+        return new File(c.getCacheDir(), "fridgedash-report.txt");
+    }
+
+    private boolean isReport(Uri uri) {
+        return uri != null && uri.getPath() != null && uri.getPath().endsWith(".txt");
+    }
 
     @Override public boolean onCreate() { return true; }
 
@@ -30,18 +40,19 @@ public class ApkProvider extends ContentProvider {
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!"r".equals(mode)) throw new FileNotFoundException("read-only");
-        File f = file();
-        if (!f.exists()) throw new FileNotFoundException("no update downloaded");
+        File f = isReport(uri) ? reportFile(getContext()) : file();
+        if (!f.exists()) throw new FileNotFoundException("file not available");
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
-    @Override public String getType(Uri uri) { return APK_MIME; }
+    @Override public String getType(Uri uri) { return isReport(uri) ? "text/plain" : APK_MIME; }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
-        File f = file();
+        boolean rep = isReport(uri);
+        File f = rep ? reportFile(getContext()) : file();
         MatrixCursor c = new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE});
-        c.addRow(new Object[]{"fridgedash.apk", f.length()});
+        c.addRow(new Object[]{rep ? "fridgedash-report.txt" : "fridgedash.apk", f.length()});
         return c;
     }
 
