@@ -42,6 +42,15 @@ public class MainActivity extends BaseActivity {
         }
     };
     private boolean wallpaperBusy;
+    private TextView weatherIcon, weatherTemp, weatherSub;
+    private boolean weatherBusy;
+    private static final long WEATHER_CHECK_MS = 10 * 60 * 1000;
+    private final Runnable weatherTimer = new Runnable() {
+        @Override public void run() {
+            refreshWeather(false);
+            main.postDelayed(this, WEATHER_CHECK_MS);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +61,11 @@ public class MainActivity extends BaseActivity {
         wallpaper = findViewById(R.id.wallpaper);
         creditText = findViewById(R.id.creditText);
         wifiIcon = findViewById(R.id.wifiIcon);
+        weatherIcon = findViewById(R.id.weatherIcon);
+        weatherTemp = findViewById(R.id.weatherTemp);
+        weatherSub = findViewById(R.id.weatherSub);
+        findViewById(R.id.weatherCard).setOnClickListener(v ->
+                startActivity(new Intent(this, WeatherActivity.class)));
 
         findViewById(R.id.btnSettings).setOnClickListener(v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
@@ -93,12 +107,49 @@ public class MainActivity extends BaseActivity {
         showBrief(null);
         main.removeCallbacks(briefTimer);
         main.post(briefTimer);
+        showWeather(Weather.cached(this));
+        main.removeCallbacks(weatherTimer);
+        main.post(weatherTimer);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         main.removeCallbacks(briefTimer);
+        main.removeCallbacks(weatherTimer);
+    }
+
+    // ------------------------------------------------------------------ weather
+
+    private void showWeather(Weather w) {
+        if (w == null) {
+            weatherIcon.setText("⛅");
+            weatherTemp.setText("—°");
+            weatherSub.setText("Loading weather…");
+            return;
+        }
+        weatherIcon.setText(Weather.icon(w.code, w.isDay));
+        weatherTemp.setText(w.temp + "°");
+        weatherSub.setText(w.shortPlace() + " · " + w.todayMax + "° / " + w.todayMin + "°"
+                + (w.todayRain >= 30 ? " · ☂ " + w.todayRain + "%" : ""));
+    }
+
+    private void refreshWeather(boolean force) {
+        Weather c = Weather.cached(this);
+        if (weatherBusy || (!force && c != null && !c.stale())) return;
+        weatherBusy = true;
+        final Context app = getApplicationContext();
+        bg.execute(() -> {
+            Weather w = null;
+            try { w = Weather.fetch(app); } catch (Exception ignored) {}
+            final Weather fw = w;
+            main.post(() -> {
+                weatherBusy = false;
+                if (isDestroyed()) return;
+                if (fw != null) showWeather(fw);
+                else if (c == null) weatherSub.setText("Weather unavailable");
+            });
+        });
     }
 
     // ------------------------------------------------------------------ daily brief
@@ -256,6 +307,7 @@ public class MainActivity extends BaseActivity {
                 main.post(() -> {
                     updateNetwork();
                     refreshBrief();
+                    refreshWeather(false);
                     if (Wallpaper.refreshDue(MainActivity.this)) refreshWallpaper();
                 });
             }

@@ -74,6 +74,11 @@
             android:theme="@style/AppTheme.Fullscreen" />
 
         <activity
+            android:name=".WeatherActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.Fullscreen" />
+
+        <activity
             android:name=".DiagnosticsActivity"
             android:exported="false"
             android:label="@string/diagnostics" />

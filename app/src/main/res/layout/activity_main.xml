@@ -78,22 +78,83 @@
                 android:orientation="vertical"
                 android:paddingBottom="3dp">
 
-                <app.fridgedash.GlassLayout
-                    android:id="@+id/btnSettings"
-                    android:layout_width="34dp"
-                    android:layout_height="34dp"
-                    android:clickable="true"
-                    android:contentDescription="FridgeDash settings"
-                    android:focusable="true"
-                    android:gravity="center"
-                    app:glassPill="true">
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-                    <ImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:importantForAccessibility="no"
-                        android:src="@drawable/ic_settings" />
-                </app.fridgedash.GlassLayout>
+                    <!-- Weather: tap for the forecast -->
+                    <app.fridgedash.GlassLayout
+                        android:id="@+id/weatherCard"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="true"
+                        android:contentDescription="Weather forecast"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="12dp"
+                        android:paddingTop="7dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="7dp"
+                        app:glassRadius="18dp">
+
+                        <TextView
+                            android:id="@+id/weatherIcon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
+                            android:text="⛅"
+                            android:textSize="26sp" />
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/weatherTemp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="sans-serif-light"
+                                android:includeFontPadding="false"
+                                android:text="—°"
+                                android:textColor="#FFF4F6FB"
+                                android:textSize="26sp" />
+
+                            <TextView
+                                android:id="@+id/weatherSub"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:maxWidth="150dp"
+                                android:maxLines="1"
+                                android:ellipsize="end"
+                                android:text="Weather"
+                                android:textColor="#DBF4F6FB"
+                                android:textSize="9sp" />
+                        </LinearLayout>
+                    </app.fridgedash.GlassLayout>
+
+                    <app.fridgedash.GlassLayout
+                        android:id="@+id/btnSettings"
+                        android:layout_width="34dp"
+                        android:layout_height="34dp"
+                        android:layout_marginStart="8dp"
+                        android:clickable="true"
+                        android:contentDescription="FridgeDash settings"
+                        android:focusable="true"
+                        android:gravity="center"
+                        app:glassPill="true">
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/ic_settings" />
+                    </app.fridgedash.GlassLayout>
+                </LinearLayout>
 
                 <app.fridgedash.GlassLayout
                     android:id="@+id/creditChip"

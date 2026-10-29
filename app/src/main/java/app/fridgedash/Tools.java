@@ -88,7 +88,7 @@ final class Tools {
     }
 
     /** {lat, lon, name} for the home location, or null. */
-    private static Object[] home(Context c) throws Exception {
+    static Object[] home(Context c) throws Exception {
         String set = Prefs.homeCity(c);
         if (!set.isEmpty()) {
             Object[] g = geocode(set);
@@ -115,7 +115,7 @@ final class Tools {
         new Thread(() -> { try { home(app); } catch (Exception ignored) {} }, "home-location").start();
     }
 
-    private static Object[] geocode(String place) throws Exception {
+    static Object[] geocode(String place) throws Exception {
         JSONObject j = new JSONObject(get("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
                 + URLEncoder.encode(place.split(",")[0].trim(), "UTF-8")));
         JSONArray r = j.optJSONArray("results");
@@ -155,7 +155,7 @@ final class Tools {
         return b.toString();
     }
 
-    private static String describe(int code) {
+    static String describe(int code) {
         if (code == 0) return "clear";
         if (code <= 2) return "partly cloudy";
         if (code == 3) return "overcast";
@@ -216,7 +216,7 @@ final class Tools {
         return b.length() == 0 ? "No result found." : b.toString();
     }
 
-    private static String get(String url) throws Exception {
+    static String get(String url) throws Exception {
         try (Response r = http().newCall(new Request.Builder().url(url).build()).execute()) {
             if (!r.isSuccessful()) throw new java.io.IOException("HTTP " + r.code());
             return r.body() == null ? "" : r.body().string();
