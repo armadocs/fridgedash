@@ -300,6 +300,11 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     }
 
     @Override
+    public void onHangUp() {
+        if (!isFinishing()) finish();
+    }
+
+    @Override
     public void onError(String message, boolean fatal) {
         if (fatal) {
             endedWithError = true;

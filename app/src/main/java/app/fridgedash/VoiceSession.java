@@ -49,6 +49,8 @@ final class VoiceSession {
         /** Microphone level after boost, ~10×/s, and whether it's currently paused. */
         void onMicLevel(float level, boolean paused);
         void onError(String message, boolean fatal);
+        /** You said "stop" / "bye": the goodbye has finished playing, close the call screen. */
+        void onHangUp();
     }
 
     static final int RATE = 24000;
@@ -96,6 +98,7 @@ final class VoiceSession {
 
     private volatile boolean responseActive;
     private volatile long hearingSince;
+    private volatile long hangUpAt;      // >0 once ChatGPT decided to end the call
     private static final long MAX_TURN_MS = 15_000; // background noise can stop "end of speech" detection
     private volatile long lastActivity;
     private final StringBuilder transcript = new StringBuilder();
@@ -267,6 +270,15 @@ final class VoiceSession {
                 main.post(() -> listener.onAssistantText(t, fresh));
                 break;
             }
+            case "response.output_item.done": {
+                JSONObject item = ev.optJSONObject("item");
+                if (item != null && "function_call".equals(item.optString("type"))
+                        && "end_call".equals(item.optString("name"))) requestHangUp();
+                break;
+            }
+            case "response.function_call_arguments.done":
+                if ("end_call".equals(ev.optString("name"))) requestHangUp();
+                break;
             case "response.done": {
                 responseActive = false;
                 JSONObject resp = ev.optJSONObject("response");
@@ -314,6 +326,14 @@ final class VoiceSession {
                     .put("type", "realtime")
                     .put("instructions", instructions())
                     .put("output_modalities", new org.json.JSONArray().put("audio"))
+                    .put("tools", new org.json.JSONArray().put(new JSONObject()
+                            .put("type", "function")
+                            .put("name", "end_call")
+                            .put("description", "Hang up and close the voice screen. Use when the user says "
+                                    + "stop, that's all, goodbye, bye, thanks that's it, close, or otherwise ends the conversation.")
+                            .put("parameters", new JSONObject().put("type", "object")
+                                    .put("properties", new JSONObject()))))
+                    .put("tool_choice", "auto")
                     .put("audio", new JSONObject().put("input", input).put("output", output));
             return new JSONObject().put("type", "session.update").put("session", session).toString();
         } catch (JSONException e) {
@@ -327,6 +347,9 @@ final class VoiceSession {
         return "You are ChatGPT, talking by voice through the screen on a kitchen refrigerator. "
                 + "Speak naturally and keep answers short (a few sentences) unless asked for more detail. "
                 + "People may be cooking or busy, so be clear and practical. "
+                + "When the user says stop, bye, that's all or otherwise ends the conversation, say a very short "
+                + "goodbye (two or three words) and call end_call. "
+                + "If they only want you to stop talking mid-answer but keep going, just stop and wait. "
                 + "Right now it is " + f.format(new Date()) + ".";
     }
 
@@ -563,6 +586,11 @@ final class VoiceSession {
             }
             if (c == null) {
                 keepAwake();
+                long h = hangUpAt;
+                if (h > 0 && ((!isAssistantAudible() && !responseActive) || System.currentTimeMillis() - h > 8000)) {
+                    hangUpAt = 0;
+                    main.post(listener::onHangUp);
+                }
                 if (state == State.SPEAKING && !isAssistantAudible()) {
                     lastPlaybackEnd = System.currentTimeMillis();
                     if (!responseActive) setState(State.LISTENING);
@@ -606,6 +634,10 @@ final class VoiceSession {
             int w = track.write(SILENCE, 0, SILENCE.length);
             if (w > 0) framesWritten += w / 2;
         }
+    }
+
+    private void requestHangUp() {
+        if (hangUpAt == 0) hangUpAt = System.currentTimeMillis();
     }
 
     /** You started talking while ChatGPT was speaking (barge-in mode). */
