@@ -25,9 +25,19 @@ final class BriefView {
     private static final int DIM = 0xB8E8ECF5;
     private static final int AMBER = 0xFFF5B14C, TEAL = 0xFF5ED3C4, BLUE = 0xFF9FB4FF, GREY = 0xFFB8C0CC;
 
+    interface Listener {
+        /** An item was ticked/unticked on screen (already updated locally). */
+        void onToggle(Brief b, Brief.Item it, boolean done);
+    }
+
     private final Context ctx;
     private final LinearLayout col;
     private boolean parkingOpen;
+    private Listener listener;
+    private Brief current;
+    private String currentStatus;
+
+    void setListener(Listener l) { listener = l; }
 
     BriefView(Context ctx, LinearLayout col) {
         this.ctx = ctx;
@@ -44,6 +54,8 @@ final class BriefView {
     }
 
     void show(Brief b, String status) {
+        current = b;
+        currentStatus = status;
         col.removeAllViews();
         int total = b.taskCount();
         String progress = total > 0 ? b.doneCount(ctx) + " of " + total + " done" : null;
@@ -69,6 +81,7 @@ final class BriefView {
 
     private String subtitle(Brief b, String status) {
         StringBuilder sb = new StringBuilder(b.title.isEmpty() ? "Daily brief" : b.title);
+        if (b.live) sb.append(" · synced with Notion");
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
         if (!b.date.isEmpty() && !b.date.equals(today)) sb.append(" · from ").append(b.date);
         if (status != null && !status.isEmpty()) sb.append(" · ").append(status);
@@ -164,7 +177,8 @@ final class BriefView {
 
             row.setOnClickListener(v -> {
                 b.setDone(ctx, it, !done);
-                show(b, null);
+                if (listener != null) listener.onToggle(b, it, !done);
+                show(b, currentStatus);
             });
 
             if (i > 0) card.addView(divider());
@@ -226,11 +240,21 @@ final class BriefView {
         head.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         head.addView(text(parkingOpen ? "Hide" : "Show", 10, GREY, false));
         card.addView(head);
-        if (parkingOpen) {
+        if (parkingOpen && current != null) {
             for (Brief.Item it : s.items) {
-                TextView line = text("•  " + it.title + (it.detail.isEmpty() ? "" : " — " + it.detail), 9.5f, DIM, false);
-                line.setPadding(0, dp(6), 0, 0);
+                final boolean done = current.isDone(ctx, it);
+                TextView line = text((done ? "☑  " : "☐  ") + it.title + (it.detail.isEmpty() ? "" : " — " + it.detail),
+                        9.5f, done ? 0x80E8ECF5 : DIM, false);
+                if (done) line.setPaintFlags(line.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+                line.setPadding(0, dp(8), 0, dp(2));
                 line.setLineSpacing(0, 1.2f);
+                line.setClickable(true);
+                line.setOnClickListener(v -> {
+                    Brief b = current;
+                    b.setDone(ctx, it, !done);
+                    if (listener != null) listener.onToggle(b, it, !done);
+                    show(b, currentStatus);
+                });
                 card.addView(line);
             }
         }

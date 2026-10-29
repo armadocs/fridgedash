@@ -34,7 +34,7 @@ public class MainActivity extends BaseActivity {
     private BriefView briefView;
     private Brief brief;
     private boolean briefBusy;
-    private static final long BRIEF_REFRESH_MS = 5 * 60 * 1000;
+    private static final long BRIEF_REFRESH_MS = 2 * 60 * 1000;
     private final Runnable briefTimer = new Runnable() {
         @Override public void run() {
             refreshBrief();
@@ -66,6 +66,7 @@ public class MainActivity extends BaseActivity {
                 startActivity(new Intent(this, AppsActivity.class)));
 
         briefView = new BriefView(this, findViewById(R.id.todayColumn));
+        briefView.setListener(this::syncToggle);
 
         View bannerBox = findViewById(R.id.updateBannerBox);
         updates = new UpdateFlow(this, bg, findViewById(R.id.updateBanner), bannerBox, null);
@@ -111,6 +112,30 @@ public class MainActivity extends BaseActivity {
         }
     }
 
+    /** Writes a check-off to Notion; on failure, undoes it on screen. */
+    private void syncToggle(Brief b, Brief.Item it, boolean done) {
+        if (it.pageId.isEmpty() || !Notion.configured(this)) return;
+        final android.content.Context app = getApplicationContext();
+        bg.execute(() -> {
+            String err = null;
+            try {
+                Notion.setDone(app, it.pageId, done);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(Brief.cacheFile(app))) {
+                    out.write(b.toJson().getBytes("UTF-8"));
+                }
+            } catch (Exception e) {
+                err = e.getMessage();
+            }
+            final String e = err;
+            if (e != null) main.post(() -> {
+                if (isDestroyed()) return;
+                b.setDone(app, it, !done);
+                briefView.show(b, "not saved");
+                Toast.makeText(this, "Couldn't update Notion: " + e, Toast.LENGTH_LONG).show();
+            });
+        });
+    }
+
     private void refreshBrief() {
         if (briefBusy || !Brief.configured(this)) return;
         briefBusy = true;
@@ -119,7 +144,7 @@ public class MainActivity extends BaseActivity {
             Brief fresh = null;
             String err = null;
             try {
-                fresh = Brief.fetch(app);
+                fresh = Brief.load(app);
             } catch (Exception e) {
                 err = e.getMessage();
             }

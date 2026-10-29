@@ -44,6 +44,8 @@ public class SettingsActivity extends BaseActivity {
     private TextView inputButton;
     private EditText briefUrlField, briefTokenField;
     private TextView briefStatus;
+    private EditText notionField;
+    private TextView notionStatus;
     private TextView gainButton;
     private TextView keyStatus, micStatus, voiceButton, bargeButton, wallButton, sizeButton, updateStatus;
     private boolean keyVisible;
@@ -172,6 +174,39 @@ public class SettingsActivity extends BaseActivity {
         briefStatus = note(Prefs.briefUrl(this).isEmpty() ? "Not connected yet." : "Connected.");
         col.addView(briefStatus);
 
+        col.addView(text("Notion (shared to-do list, recommended)", 13, true));
+        col.addView(note("When Notion is connected, the fridge shows the \"Daily Brief\" database instead of the "
+                + "file, and ticking an item off updates Notion (and so your phone and Grok). Paste the "
+                + "FridgeDash integration key (starts with ntn_), then Connect."));
+        notionField = new EditText(this);
+        notionField.setSingleLine(true);
+        notionField.setHint("ntn_…");
+        notionField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        notionField.setTextColor(getColor(R.color.text));
+        notionField.setHintTextColor(getColor(R.color.text_dim));
+        notionField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        notionField.setTypeface(Typeface.MONOSPACE);
+        notionField.setText(Prefs.notionToken(this));
+        col.addView(notionField);
+        LinearLayout notionRow = row();
+        notionRow.addView(button("Paste key", v -> {
+            String t = clipboardText();
+            int at = t.indexOf("ntn_");
+            if (at < 0) at = t.indexOf("secret_");
+            if (at > 0) t = t.substring(at);
+            int sp = t.indexOf(' ');
+            if (sp > 0) t = t.substring(0, sp);
+            notionField.setText(t.trim());
+        }, true), weighted());
+        notionRow.addView(button("Connect Notion", v -> connectNotion(), true), weighted());
+        notionRow.addView(button("Disconnect", v -> {
+            Prefs.setNotionDb(this, "");
+            notionStatus.setText("Disconnected. The fridge uses the brief file again.");
+        }, false), weighted());
+        col.addView(notionRow);
+        notionStatus = note(Notion.configured(this) ? "✓ Connected to the Daily Brief database." : "Not connected.");
+        col.addView(notionStatus);
+
         // ---------------------------------------------------------- Screen
         section("Screen");
         wallButton = button("", v -> {
@@ -224,6 +259,7 @@ public class SettingsActivity extends BaseActivity {
         Prefs.setModel(this, modelField.getText().toString());
         Prefs.setBriefUrl(this, briefUrlField.getText().toString());
         Prefs.setBriefToken(this, briefTokenField.getText().toString());
+        Prefs.setNotionToken(this, notionField.getText().toString());
     }
 
     private String clipboardText() {
@@ -232,6 +268,40 @@ public class SettingsActivity extends BaseActivity {
         if (clip == null || clip.getItemCount() == 0) return "";
         CharSequence t = clip.getItemAt(0).coerceToText(this);
         return t == null ? "" : t.toString().trim();
+    }
+
+    private void connectNotion() {
+        final String token = notionField.getText().toString().trim();
+        if (token.isEmpty()) {
+            notionStatus.setText("Paste the Notion key first.");
+            return;
+        }
+        Prefs.setNotionToken(this, token);
+        notionStatus.setText("Connecting to Notion…");
+        final Context app = getApplicationContext();
+        bg.execute(() -> {
+            String msg;
+            try {
+                Notion.ConnectResult r = Notion.connect(token);
+                Prefs.setNotionDb(app, r.dbId);
+                int imported = 0;
+                if (r.created) {
+                    Brief file = Brief.cached(app);
+                    if (file != null && !file.live) imported = Notion.importBrief(token, r.dbId, file);
+                }
+                Brief b = Notion.fetch(app);
+                int open = 0;
+                for (Brief.Section sct : b.sections) for (Brief.Item it : sct.items) if (!it.done) open++;
+                msg = "✓ Connected. " + (r.created ? "Created the \"Daily Brief\" database in \"" + r.parentTitle
+                        + "\"" + (imported > 0 ? " and imported " + imported + " items from the current brief" : "") + ". "
+                        : "Using your existing \"Daily Brief\" database. ")
+                        + open + " open items.";
+            } catch (Exception e) {
+                msg = "✗ " + e.getMessage();
+            }
+            final String m = msg;
+            main.post(() -> { if (!isDestroyed()) notionStatus.setText(m); });
+        });
     }
 
     private void saveAndTestBrief() {

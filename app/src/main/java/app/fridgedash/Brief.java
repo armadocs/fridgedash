@@ -42,6 +42,8 @@ final class Brief {
 
     static final class Item {
         String id, title, detail, when;
+        String pageId = "";   // set when the item lives in Notion
+        boolean done;         // Notion's Done checkbox (Notion items only)
     }
 
     static final class Section {
@@ -50,6 +52,7 @@ final class Brief {
     }
 
     String date = "", title = "Daily brief", generatedAt = "";
+    boolean live;   // true = from Notion (check-offs sync), false = from a file (check-offs stay on the fridge)
     final List<Section> sections = new ArrayList<>();
 
     // ------------------------------------------------------------------ parsing
@@ -61,6 +64,7 @@ final class Brief {
             b.date = o.optString("date");
             b.title = o.optString("title", "Daily brief");
             b.generatedAt = o.optString("generated_at");
+            b.live = o.optBoolean("live", false);
             JSONArray secs = o.optJSONArray("sections");
             if (secs == null) throw new IOException("No \"sections\" in the brief");
             for (int i = 0; i < secs.length(); i++) {
@@ -80,7 +84,10 @@ final class Brief {
                             it.detail = io.optString("detail", "");
                             it.when = io.optString("when", "");
                             it.id = io.optString("id", "");
+                            it.pageId = io.optString("page_id", "");
+                            it.done = io.optBoolean("done", false);
                         } else {
+                            it.pageId = "";
                             it.title = String.valueOf(raw);
                             it.detail = "";
                             it.when = "";
@@ -119,11 +126,36 @@ final class Brief {
     }
 
     boolean isDone(Context c, Item it) {
+        if (!it.pageId.isEmpty()) return it.done;
         return done(c).getBoolean(date + "/" + it.id, false);
     }
 
+    /** Local part of ticking an item; Notion items are written back by the caller. */
     void setDone(Context c, Item it, boolean v) {
-        done(c).edit().putBoolean(date + "/" + it.id, v).apply();
+        if (!it.pageId.isEmpty()) it.done = v;
+        else done(c).edit().putBoolean(date + "/" + it.id, v).apply();
+    }
+
+    /** Same JSON format as brief.json, plus Notion fields, for the offline copy. */
+    String toJson() {
+        try {
+            JSONObject o = new JSONObject().put("date", date).put("title", title)
+                    .put("generated_at", generatedAt).put("live", live);
+            JSONArray secs = new JSONArray();
+            for (Section s : sections) {
+                JSONArray items = new JSONArray();
+                for (Item it : s.items) {
+                    items.put(new JSONObject().put("id", it.id).put("title", it.title)
+                            .put("detail", it.detail == null ? "" : it.detail)
+                            .put("when", it.when == null ? "" : it.when)
+                            .put("page_id", it.pageId).put("done", it.done));
+                }
+                secs.put(new JSONObject().put("id", s.id).put("title", s.title).put("kind", s.kind).put("items", items));
+            }
+            return o.put("sections", secs).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
     }
 
     int doneCount(Context c) {
@@ -151,7 +183,19 @@ final class Brief {
     }
 
     static boolean configured(Context c) {
-        return !Prefs.briefUrl(c).isEmpty();
+        return Notion.configured(c) || !Prefs.briefUrl(c).isEmpty();
+    }
+
+    /** Gets the current brief from Notion (if connected) or the brief file. Null = unchanged. */
+    static Brief load(Context c) throws IOException {
+        if (Notion.configured(c)) {
+            Brief b = Notion.fetch(c);
+            try (FileOutputStream out = new FileOutputStream(cacheFile(c))) {
+                out.write(b.toJson().getBytes("UTF-8"));
+            }
+            return b;
+        }
+        return fetch(c);
     }
 
     /**

@@ -74,5 +74,11 @@ final class Prefs {
     static String briefToken(Context c) { return p(c).getString("brief_token", "").trim(); }
     static void setBriefToken(Context c, String v) { p(c).edit().putString("brief_token", v == null ? "" : v.trim()).apply(); }
 
+    /** Notion internal-integration key and the "Daily Brief" database id. */
+    static String notionToken(Context c) { return p(c).getString("notion_token", "").trim(); }
+    static void setNotionToken(Context c, String v) { p(c).edit().putString("notion_token", v == null ? "" : v.trim()).apply(); }
+    static String notionDb(Context c) { return p(c).getString("notion_db", "").trim(); }
+    static void setNotionDb(Context c, String v) { p(c).edit().putString("notion_db", v == null ? "" : v.trim()).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }
