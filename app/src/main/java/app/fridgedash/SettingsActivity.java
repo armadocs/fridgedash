@@ -113,6 +113,7 @@ public class SettingsActivity extends BaseActivity {
         testRow.addView(button("Test speaker", v -> testSpeaker(), false), weighted());
         col.addView(testRow);
         col.addView(button("Deep microphone scan (≈35 s, clap the whole time)", v -> deepScan(), false), full());
+        col.addView(button("Record 5 s & play back (hear what ChatGPT hears)", v -> recordPlayback(), true), full());
         gainButton = button("", v -> cycleGain(), false);
         col.addView(gainButton, full());
         refreshGain();
@@ -383,6 +384,97 @@ public class SettingsActivity extends BaseActivity {
             final String fr = sb.toString().trim();
             main.post(() -> { if (!isDestroyed()) { micStatus.setText(fr); refreshInput(); } });
         }, "mic-test").start();
+    }
+
+    /** Records 5 s exactly as a call would (scan setup + boost), then plays it back. */
+    private void recordPlayback() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC_TEST);
+            return;
+        }
+        final Context app = getApplicationContext();
+        micStatus.setText("Recording 5 seconds… talk normally, facing the screen.");
+        new Thread(() -> {
+            String msg;
+            MicScan.Config cfg = MicScan.Config.decode(Prefs.micScan(app));
+            if (cfg == null) cfg = new MicScan.Config(MediaRecorder.AudioSource.MIC, 16000, 1, 0);
+            int gain = Prefs.micGain(app);
+            android.media.AudioRecord r = MicScan.open(cfg);
+            if (r == null) {
+                msg = "✗ Couldn't open the microphone with the saved setup. Run the deep scan again.";
+            } else {
+                int total = cfg.rate * 5;
+                short[] mono = new short[total];
+                short[] buf = new short[cfg.rate / 10 * cfg.channels];
+                short[] one = new short[cfg.rate / 10];
+                int got = 0;
+                float peak = 0;
+                double sumAll = 0;
+                try {
+                    r.startRecording();
+                    long t0 = System.currentTimeMillis();
+                    while (got < total && System.currentTimeMillis() - t0 < 7000) {
+                        int n = r.read(buf, 0, buf.length, android.media.AudioRecord.READ_NON_BLOCKING);
+                        if (n <= 0) { Thread.sleep(15); continue; }
+                        int fr = cfg.channels > 1 ? MicScan.extract(buf, n, cfg.channels, cfg.channel, one) : n;
+                        short[] src = cfg.channels > 1 ? one : buf;
+                        if (gain > 1) VoiceSession.applyGain(src, fr, gain);
+                        int take = Math.min(fr, total - got);
+                        System.arraycopy(src, 0, mono, got, take);
+                        got += take;
+                        float l = VoiceSession.rms(src, fr);
+                        peak = Math.max(peak, l);
+                        sumAll += l;
+                    }
+                } catch (Exception e) {
+                    got = 0;
+                } finally {
+                    try { r.stop(); } catch (Exception ignored) {}
+                    r.release();
+                }
+                if (got == 0) {
+                    msg = "✗ No sound data recorded.";
+                } else {
+                    final String rec = "Recorded with boost ×" + gain + ": loudest " + Math.round(peak * 100)
+                            + "%. Playing it back now…";
+                    main.post(() -> { if (!isDestroyed()) micStatus.setText(rec); });
+                    playPcm(mono, got, cfg.rate);
+                    msg = "Recorded with boost ×" + gain + ": loudest " + Math.round(peak * 100) + "%.\n"
+                            + (peak < 0.05f ? "Very quiet: raise the boost or speak closer."
+                            : peak > 0.9f ? "Very loud/distorted: lower the boost."
+                            : "Level looks usable.") + " Did you hear yourself clearly?";
+                }
+            }
+            final String m = msg;
+            main.post(() -> { if (!isDestroyed()) micStatus.setText(m); });
+        }, "rec-playback").start();
+    }
+
+    private static void playPcm(short[] pcm, int n, int rate) {
+        try {
+            int lead = rate * 6 / 10;
+            short[] data = new short[lead + n];
+            System.arraycopy(pcm, 0, data, lead, n);
+            android.media.AudioTrack t = new android.media.AudioTrack.Builder()
+                    .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                    .setBufferSizeInBytes(data.length * 2)
+                    .setTransferMode(android.media.AudioTrack.MODE_STATIC)
+                    .build();
+            t.write(data, 0, data.length);
+            t.play();
+            long t0 = System.currentTimeMillis();
+            while (System.currentTimeMillis() - t0 < 9000
+                    && (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) < data.length) {
+                Thread.sleep(50);
+            }
+            Thread.sleep(200);
+            t.release();
+        } catch (Exception ignored) {
+        }
     }
 
     private void deepScan() {

@@ -36,7 +36,8 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     private static final int REQ_MIC = 7;
 
     private VoiceSession session;
-    private TextView status, transcript;
+    private TextView status, transcript, micMeter;
+    private float meterPeak;
     private ScrollView transcriptScroll;
     private OrbView orb;
     private ImageView muteIcon;
@@ -66,6 +67,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         status = findViewById(R.id.status);
+        micMeter = findViewById(R.id.micMeter);
         transcript = findViewById(R.id.transcript);
         transcriptScroll = findViewById(R.id.transcriptScroll);
         orb = findViewById(R.id.orb);
@@ -256,6 +258,17 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
             transcript.setText(fullTextSoFar);
             transcriptScroll.post(() -> transcriptScroll.fullScroll(View.FOCUS_DOWN));
         }
+    }
+
+    @Override
+    public void onMicLevel(float level, boolean paused) {
+        meterPeak = Math.max(level, meterPeak * 0.85f);
+        int bars = Math.min(20, Math.round(meterPeak * 20));
+        StringBuilder b = new StringBuilder("mic ");
+        for (int i = 0; i < 20; i++) b.append(i < bars ? '█' : '·');
+        b.append(String.format(java.util.Locale.US, " %3d%%", Math.round(level * 100)));
+        if (paused) b.append("  (paused)");
+        micMeter.setText(b);
     }
 
     @Override

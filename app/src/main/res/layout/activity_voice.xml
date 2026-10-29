@@ -43,6 +43,15 @@
             android:textColor="#B8E8ECF5"
             android:textSize="13sp" />
 
+        <TextView
+            android:id="@+id/micMeter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textColor="#995ED3C4"
+            android:textSize="11sp" />
+
         <app.fridgedash.OrbView
             android:id="@+id/orb"
             android:layout_width="300dp"

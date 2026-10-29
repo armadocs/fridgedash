@@ -46,6 +46,8 @@ final class VoiceSession {
         void onState(State s);
         void onAssistantText(String fullTextSoFar, boolean newTurn);
         void onLevel(float level);
+        /** Microphone level after boost, ~10×/s, and whether it's currently paused. */
+        void onMicLevel(float level, boolean paused);
         void onError(String message, boolean fatal);
     }
 
@@ -462,6 +464,8 @@ final class VoiceSession {
             float level = rms(samples, n);
 
             boolean paused = muted || (!bargeIn && (isAssistantAudible() || now - lastPlaybackEnd < TAIL_MS));
+            final boolean pausedNow = paused;
+            main.post(() -> listener.onMicLevel(level, pausedNow));
             if (!paused) {
                 main.post(() -> { if (state != State.SPEAKING) listener.onLevel(level); });
                 byte[] pcm = toPcm24k(samples, n, recRate);
