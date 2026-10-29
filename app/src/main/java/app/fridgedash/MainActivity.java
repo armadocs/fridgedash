@@ -78,6 +78,7 @@ public class MainActivity extends BaseActivity {
 
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         watchNetwork();
+        RemoteMic.get(this).startServer(); // lets a phone be the microphone (Settings → Phone as microphone)
     }
 
     @Override

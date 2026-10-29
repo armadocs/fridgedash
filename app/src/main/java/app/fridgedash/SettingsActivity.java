@@ -47,6 +47,13 @@ public class SettingsActivity extends BaseActivity {
     private EditText notionField;
     private TextView notionStatus;
     private TextView gainButton;
+    private TextView remoteStatus, remoteButton;
+    private final Runnable remoteTick = new Runnable() {
+        @Override public void run() {
+            refreshRemote();
+            main.postDelayed(this, 1000);
+        }
+    };
     private TextView keyStatus, micStatus, voiceButton, bargeButton, wallButton, sizeButton, updateStatus;
     private boolean keyVisible;
     private UpdateFlow updates;
@@ -133,6 +140,25 @@ public class SettingsActivity extends BaseActivity {
         modelField.setTextColor(getColor(R.color.text));
         modelField.setText(Prefs.model(this));
         col.addView(modelField);
+
+        // ---------------------------------------------------------- Phone as microphone
+        section("Phone as microphone");
+        col.addView(note("Install FridgeDash on a phone, open \"Fridge Mic\" there and turn it on. Then the "
+                + "ChatGPT button here uses the phone's microphone over Wi-Fi, and ChatGPT answers through the "
+                + "fridge's speaker. You can also start a call from the phone."));
+        remoteStatus = text("", 12, false);
+        remoteStatus.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        col.addView(remoteStatus);
+        remoteButton = button("", v -> {
+            boolean on = !Prefs.remoteMicServer(this);
+            Prefs.setRemoteMicServer(this, on);
+            if (on) RemoteMic.get(this).startServer(); else RemoteMic.get(this).stopServer();
+            refreshRemote();
+            refreshInput();
+        }, false);
+        col.addView(remoteButton, full());
+        col.addView(button("Use THIS device as the microphone for a fridge (Fridge Mic)",
+                v -> startActivity(new Intent(this, MicLinkActivity.class)), false), full());
 
         // ---------------------------------------------------------- Daily brief
         section("Daily brief");
@@ -247,6 +273,8 @@ public class SettingsActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        RemoteMic.get(this).startServer();
+        main.post(remoteTick);
         homeButton.setText(FridgeHome.isFridgeDashDefault(this)
                 ? "Home button opens: FridgeDash  (tap to change)"
                 : "Home button opens: Hisense  (tap to make it FridgeDash)");
@@ -255,6 +283,7 @@ public class SettingsActivity extends BaseActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        main.removeCallbacks(remoteTick);
         // Save typed values when leaving.
         Prefs.setApiKey(this, keyField.getText().toString());
         Prefs.setModel(this, modelField.getText().toString());
@@ -451,6 +480,23 @@ public class SettingsActivity extends BaseActivity {
         String now = Prefs.useKeyboard(this) ? "keyboard" : "microphone";
         inputButton.setText("Talk to ChatGPT with: " + ("auto".equals(m) ? "Automatic (" + now + ")"
                 : "keyboard".equals(m) ? "Keyboard" : "Microphone") + "   (tap to change)");
+    }
+
+    private void refreshRemote() {
+        RemoteMic rm = RemoteMic.get(this);
+        boolean on = Prefs.remoteMicServer(this) && !Prefs.linkEnabled(this);
+        remoteButton.setText("Accept a phone as microphone: " + (on ? "ON" : "OFF") + "   (tap to change)");
+        String ip = RemoteMic.localAddress();
+        if (Prefs.linkEnabled(this)) {
+            remoteStatus.setText("This device is set up as a microphone (Fridge Mic), so it doesn't accept one.");
+        } else if (!on) {
+            remoteStatus.setText("Off.");
+        } else if (rm.connected()) {
+            remoteStatus.setText("✓ Connected: " + rm.clientName() + " (" + rm.clientAddress() + ")");
+        } else {
+            remoteStatus.setText("Waiting for a phone…  This fridge's address: "
+                    + (ip.isEmpty() ? "no Wi-Fi" : ip) + "  (port " + RemoteMic.PORT + ")");
+        }
     }
 
     private void cycleGain() {

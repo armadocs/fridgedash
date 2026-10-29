@@ -62,6 +62,7 @@ final class VoiceSession {
     private final android.content.Context ctx;
     private BtAudio bt;              // set while a Bluetooth headset/speakerphone carries the call
     private volatile boolean usingBt;
+    private volatile RemoteMic remote;  // set while a phone on the network is the microphone
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -144,6 +145,7 @@ final class VoiceSession {
         joinQuietly(micThread);
         joinQuietly(spkThread);
         releaseAudio();
+        if (remote != null) { remote.state("ended"); remote.end(); remote = null; }
         if (bt != null) { bt.stop(); bt = null; }
         if (http != null) {
             http.dispatcher().executorService().shutdown();
@@ -183,7 +185,12 @@ final class VoiceSession {
         public void onOpen(WebSocket webSocket, Response response) {
             if (!running) { webSocket.close(1000, null); return; }
             send(sessionUpdate());
-            if (useMic && BtAudio.headsetConnected(ctx)) {
+            RemoteMic rm = RemoteMic.get(ctx);
+            if (useMic && rm.connected()) {
+                remote = rm;
+                final String msg = "Using microphone: " + rm.clientName();
+                main.post(() -> listener.onError(msg, false));
+            } else if (useMic && BtAudio.headsetConnected(ctx)) {
                 bt = new BtAudio(ctx);
                 usingBt = bt.start(6000);
                 String name = BtAudio.headsetName(ctx);
@@ -322,8 +329,10 @@ final class VoiceSession {
 
     // ------------------------------------------------------------------ audio
 
+    boolean usesRemoteMic() { return remote != null; }
+
     private boolean startAudio() {
-        if (useMic) {
+        if (useMic && remote == null) {
             rec = openMic();
             if (rec == null) {
                 fail("Couldn't open the microphone. Check Settings → Test microphone.");
@@ -367,6 +376,10 @@ final class VoiceSession {
         if (rec != null) {
             rec.startRecording();
             micThread = new Thread(this::micLoop, "voice-mic");
+            micThread.start();
+        } else if (remote != null) {
+            remote.begin();
+            micThread = new Thread(this::micLoop, "voice-remote-mic");
             micThread.start();
         }
         return true;
@@ -413,7 +426,7 @@ final class VoiceSession {
 
     private void micLoop() {
         try {
-            micLoopInner();
+            if (remote != null) remoteLoop(); else micLoopInner();
         } catch (Throwable t) {
             if (running) fail("Microphone stopped: " + t.getClass().getSimpleName());
         }
@@ -479,6 +492,48 @@ final class VoiceSession {
                 return;
             }
         }
+    }
+
+    /** Same as micLoopInner, but the audio comes from a phone over Wi-Fi (already 24 kHz). */
+    private void remoteLoop() {
+        long lastData = System.currentTimeMillis();
+        while (running && !Thread.currentThread().isInterrupted()) {
+            RemoteMic rm = remote;
+            if (rm == null) return;
+            byte[] pcm = rm.poll(200);
+            long now = System.currentTimeMillis();
+            if (pcm == null) {
+                if (!rm.connected()) {
+                    fail("The phone microphone disconnected. Check Fridge Mic on the phone.");
+                    return;
+                }
+                if (now - lastData > 6000) {
+                    fail("The phone isn't sending sound. Open Fridge Mic on the phone and allow the microphone.");
+                    return;
+                }
+                if (idleHangup(now)) return;
+                continue;
+            }
+            lastData = now;
+            float level = rmsBytes(pcm, 0, pcm.length);
+            boolean paused = muted || (!bargeIn && (isAssistantAudible() || now - lastPlaybackEnd < TAIL_MS));
+            main.post(() -> listener.onMicLevel(level, paused));
+            if (!paused) {
+                main.post(() -> { if (state != State.SPEAKING) listener.onLevel(level); });
+                send("{\"type\":\"input_audio_buffer.append\",\"audio\":\""
+                        + Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}");
+            }
+            if (idleHangup(now)) return;
+        }
+    }
+
+    private boolean idleHangup(long now) {
+        if (now - lastActivity > IDLE_HANGUP_MS && !isAssistantAudible()) {
+            main.post(() -> listener.onError("Hung up after 2 minutes of silence.", true));
+            main.post(this::stop);
+            return true;
+        }
+        return false;
     }
 
     private void speakerLoopInner() {
@@ -586,6 +641,8 @@ final class VoiceSession {
     private void setState(State s) {
         if (state == s) return;
         state = s;
+        RemoteMic rm = remote;
+        if (rm != null) rm.state(s.name().toLowerCase(Locale.US));
         main.post(() -> listener.onState(s));
     }
 

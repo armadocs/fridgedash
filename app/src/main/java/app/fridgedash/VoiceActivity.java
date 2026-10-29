@@ -35,6 +35,21 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
 
     private static final int REQ_MIC = 7;
 
+    /** The open call screen, so a phone on the network can start or end a call. */
+    private static java.lang.ref.WeakReference<VoiceActivity> current;
+
+    static boolean isOpen() {
+        VoiceActivity a = current == null ? null : current.get();
+        return a != null && !a.isFinishing() && !a.isDestroyed();
+    }
+
+    static void finishCurrent() {
+        VoiceActivity a = current == null ? null : current.get();
+        if (a != null && !a.isFinishing()) a.finish();
+    }
+
+    private boolean remoteMic;
+
     private VoiceSession session;
     private TextView status, transcript, micMeter;
     private float meterPeak;
@@ -54,7 +69,9 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable silenceHint = () -> {
         if (session != null && !heardSpeech && !session.isMuted() && !keyboard) {
-            status.setText(loudest < 0.02f
+            status.setText(remoteMic
+                    ? "Nothing heard yet. Speak toward the phone, or check Fridge Mic on it."
+                    : loudest < 0.02f
                     ? "I can't hear the microphone at all. Try Settings → Test microphone, or switch to Keyboard."
                     : "Hearing sound but no speech yet. Try speaking closer to the screen.");
         }
@@ -64,7 +81,10 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_voice);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        current = new java.lang.ref.WeakReference<>(this);
 
         status = findViewById(R.id.status);
         micMeter = findViewById(R.id.micMeter);
@@ -119,6 +139,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
 
     @Override
     protected void onDestroy() {
+        if (current != null && current.get() == this) current = null;
         endSession();
         super.onDestroy();
     }
@@ -131,7 +152,8 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
             finish();
             return;
         }
-        if (!keyboard && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        remoteMic = !keyboard && RemoteMic.get(this).connected();
+        if (!keyboard && !remoteMic && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             status.setText("Allow microphone access to talk");
             askingPermission = true;
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
@@ -219,7 +241,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
                 if (keyboard) {
                     status.setText("Type a question below");
                 } else {
-                    status.setText("Listening — go ahead");
+                    status.setText(remoteMic ? "Listening — talk to the phone" : "Listening — go ahead");
                     if (!heardSpeech) { ui.removeCallbacks(silenceHint); ui.postDelayed(silenceHint, 12000); }
                 }
                 orb.setMode(OrbView.MODE_IDLE);
@@ -264,7 +286,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     public void onMicLevel(float level, boolean paused) {
         meterPeak = Math.max(level, meterPeak * 0.85f);
         int bars = Math.min(20, Math.round(meterPeak * 20));
-        StringBuilder b = new StringBuilder("mic ");
+        StringBuilder b = new StringBuilder(remoteMic ? "phone mic " : "mic ");
         for (int i = 0; i < 20; i++) b.append(i < bars ? '█' : '·');
         b.append(String.format(java.util.Locale.US, " %3d%%", Math.round(level * 100)));
         if (paused) b.append("  (paused)");

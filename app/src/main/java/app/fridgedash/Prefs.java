@@ -49,6 +49,7 @@ final class Prefs {
     static boolean useKeyboard(Context c) {
         String m = inputMode(c);
         if ("keyboard".equals(m)) return true;
+        if (RemoteMic.get(c).connected()) return false;          // a phone is the microphone
         if ("mic".equals(m)) return false;
         if (BtAudio.headsetConnected(c)) return false;          // Bluetooth speakerphone present
         if (!micScan(c).isEmpty()) return false;               // deep scan found a working channel
@@ -79,6 +80,16 @@ final class Prefs {
     static void setNotionToken(Context c, String v) { p(c).edit().putString("notion_token", v == null ? "" : v.trim()).apply(); }
     static String notionDb(Context c) { return p(c).getString("notion_db", "").trim(); }
     static void setNotionDb(Context c, String v) { p(c).edit().putString("notion_db", v == null ? "" : v.trim()).apply(); }
+
+    /** Fridge: accept a phone / mic module on the network as the microphone. */
+    static boolean remoteMicServer(Context c) { return p(c).getBoolean("remote_mic_server", true); }
+    static void setRemoteMicServer(Context c, boolean v) { p(c).edit().putBoolean("remote_mic_server", v).apply(); }
+
+    /** Phone: act as the fridge's microphone ("Fridge Mic"), and the fridge's address if auto-find fails. */
+    static boolean linkEnabled(Context c) { return p(c).getBoolean("link_enabled", false); }
+    static void setLinkEnabled(Context c, boolean v) { p(c).edit().putBoolean("link_enabled", v).apply(); }
+    static String linkHost(Context c) { return p(c).getString("link_host", "").trim(); }
+    static void setLinkHost(Context c, String v) { p(c).edit().putString("link_host", v == null ? "" : v.trim()).apply(); }
 
     static SharedPreferences raw(Context c) { return p(c); }
 }

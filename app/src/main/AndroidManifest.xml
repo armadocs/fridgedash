@@ -12,6 +12,10 @@
     <!-- Detect a paired Bluetooth speakerphone for calls (no scanning, no location). -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- "Fridge Mic" on a phone: keep streaming to the fridge while other apps are open. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
@@ -73,6 +77,34 @@
             android:name=".DiagnosticsActivity"
             android:exported="false"
             android:label="@string/diagnostics" />
+
+        <!-- On a phone: its own app icon, "Fridge Mic". -->
+        <activity
+            android:name=".MicLinkActivity"
+            android:exported="true"
+            android:label="Fridge Mic"
+            android:icon="@drawable/ic_launcher"
+            android:taskAffinity="app.fridgedash.miclink"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".MicLinkService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name=".ApkProvider"
