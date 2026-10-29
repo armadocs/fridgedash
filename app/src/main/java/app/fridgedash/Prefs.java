@@ -50,8 +50,13 @@ final class Prefs {
         String m = inputMode(c);
         if ("keyboard".equals(m)) return true;
         if ("mic".equals(m)) return false;
-        return micSource(c) < 0;
+        if (BtAudio.headsetConnected(c)) return false;          // Bluetooth speakerphone present
+        return micSource(c) < 0 || micViaBt(c);                 // built-in mic only if it tested OK
     }
+
+    /** The last successful mic test used a Bluetooth device (so it says nothing about the fridge). */
+    static boolean micViaBt(Context c) { return p(c).getBoolean("mic_via_bt", false); }
+    static void setMicViaBt(Context c, boolean v) { p(c).edit().putBoolean("mic_via_bt", v).apply(); }
 
     static SharedPreferences raw(Context c) { return p(c); }
 }

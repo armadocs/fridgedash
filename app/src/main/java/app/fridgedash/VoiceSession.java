@@ -57,6 +57,9 @@ final class VoiceSession {
     private final boolean bargeIn;
     private final int preferredSource;
     private final boolean useMic;   // false = keyboard mode: you type, ChatGPT still speaks
+    private final android.content.Context ctx;
+    private BtAudio bt;              // set while a Bluetooth headset/speakerphone carries the call
+    private volatile boolean usingBt;
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -97,7 +100,8 @@ final class VoiceSession {
     }
 
     VoiceSession(String apiKey, String model, String voice, boolean bargeIn, int preferredSource,
-                 boolean useMic, Listener listener) {
+                 boolean useMic, android.content.Context ctx, Listener listener) {
+        this.ctx = ctx.getApplicationContext();
         this.useMic = useMic;
         this.preferredSource = preferredSource;
         this.apiKey = apiKey;
@@ -135,6 +139,7 @@ final class VoiceSession {
         joinQuietly(micThread);
         joinQuietly(spkThread);
         releaseAudio();
+        if (bt != null) { bt.stop(); bt = null; }
         if (http != null) {
             http.dispatcher().executorService().shutdown();
             http.connectionPool().evictAll();
@@ -173,6 +178,17 @@ final class VoiceSession {
         public void onOpen(WebSocket webSocket, Response response) {
             if (!running) { webSocket.close(1000, null); return; }
             send(sessionUpdate());
+            if (useMic && BtAudio.headsetConnected(ctx)) {
+                bt = new BtAudio(ctx);
+                usingBt = bt.start(6000);
+                String name = BtAudio.headsetName(ctx);
+                final String msg = usingBt
+                        ? "Using Bluetooth" + (name.isEmpty() ? "" : ": " + name)
+                        : "Bluetooth device found, but its microphone didn't connect. Using the fridge instead.";
+                main.post(() -> listener.onError(msg, false));
+                if (!usingBt) { bt.stop(); bt = null; }
+            }
+            if (!running) { if (bt != null) { bt.stop(); bt = null; } return; }
             if (!startAudio()) return;
             setState(State.LISTENING);
         }
@@ -324,7 +340,7 @@ final class VoiceSession {
         int minOut = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
         track = new AudioTrack.Builder()
                 .setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(usingBt ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build())
                 .setAudioFormat(new AudioFormat.Builder()
@@ -353,7 +369,9 @@ final class VoiceSession {
 
     private AudioRecord openMic() {
         int[] rates = {24000, 48000, 16000, 44100};
-        int[] sources = preferredSource >= 0
+        int[] sources = usingBt
+                ? new int[]{MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC}
+                : preferredSource >= 0
                 ? new int[]{preferredSource, MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC}
                 : new int[]{MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC};
         for (int src : sources) {

@@ -136,7 +136,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
             return;
         }
         session = new VoiceSession(key, Prefs.model(this), Prefs.voice(this), Prefs.bargeIn(this),
-                Prefs.micSource(this), !keyboard, this);
+                Prefs.micSource(this), !keyboard, this, this);
         session.start();
     }
 

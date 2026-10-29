@@ -292,6 +292,17 @@ public class SettingsActivity extends BaseActivity {
         // Own thread: a stuck microphone must not block other settings actions.
         new Thread(() -> {
             StringBuilder sb = new StringBuilder();
+            // With a Bluetooth headset/speakerphone connected, test its microphone instead.
+            BtAudio bt = null;
+            boolean viaBt = false;
+            if (BtAudio.headsetConnected(app)) {
+                bt = new BtAudio(app);
+                viaBt = bt.start(6000);
+                String name = BtAudio.headsetName(app);
+                sb.append(viaBt ? "Testing Bluetooth microphone" + (name.isEmpty() ? "" : " (" + name + ")") + "\n"
+                        : "Bluetooth device found but its call audio didn't connect; testing the fridge.\n");
+                if (!viaBt) { bt.stop(); bt = null; }
+            }
             int bestSource = -1;
             float best = 0;
             int rate = 16000;
@@ -338,7 +349,8 @@ public class SettingsActivity extends BaseActivity {
                 }
                 if (best >= 0.02f) {
                     Prefs.setMicSource(app, bestSource);
-                } else {
+                    Prefs.setMicViaBt(app, viaBt);
+                } else if (!viaBt) {
                     Prefs.setMicSource(app, -1);
                 }
                 if (best >= 0.02f) {
@@ -348,6 +360,7 @@ public class SettingsActivity extends BaseActivity {
                             + "microphone (or Hisense blocks it).\n");
                 }
             }
+            if (bt != null) bt.stop();
             final String fr = sb.toString().trim();
             main.post(() -> { if (!isDestroyed()) { micStatus.setText(fr); refreshInput(); } });
         }, "mic-test").start();

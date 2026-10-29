@@ -287,6 +287,8 @@ public class DiagnosticsActivity extends BaseActivity {
         } catch (Exception e) {
             sb.append("Audio devices: ").append(e.getClass().getSimpleName()).append('\n');
         }
+        sb.append("Bluetooth call-audio device: ").append(BtAudio.headsetConnected(ctx)
+                ? "connected " + BtAudio.headsetName(ctx) : "none").append('\n');
         sb.append("Echo canceller available: ").append(android.media.audiofx.AcousticEchoCanceler.isAvailable()).append('\n');
         sb.append("Noise suppressor available: ").append(android.media.audiofx.NoiseSuppressor.isAvailable()).append('\n');
         sb.append("UI canvas width: ").append(Prefs.uiWidthDp(ctx)).append(" dp\n");
