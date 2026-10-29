@@ -21,9 +21,10 @@
         android:theme="@style/AppTheme">
 
         <!--
-          SAFETY: no CATEGORY_HOME filter. FridgeDash is an ordinary app,
-          so installing it cannot change or reset the default Home app.
-          The Hisense Home stays the default and the Home button keeps working.
+          SAFETY: FridgeDash can be CHOSEN as the Home app (alias below), but
+          installing it never changes the default: the Hisense Home stays the
+          Home app until you pick FridgeDash in Android's Default apps → Home app.
+          Switching back is the same menu.
         -->
         <activity
             android:name=".MainActivity"
@@ -36,6 +37,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name=".HomeAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
 
         <activity
             android:name=".AppsActivity"

@@ -109,12 +109,38 @@ final class FridgeHome {
         ComponentName cn = resolve(ctx);
         if (cn != null && launch(ctx, cn)) return;
 
-        // Fallback: ordinary Home intent → whatever the default Home app is.
-        try {
-            ctx.startActivity(homeQuery().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (ActivityNotFoundException e) {
-            Toast.makeText(ctx, "Couldn't open the Hisense home screen. Use the Home button, "
-                    + "and check Diagnostics.", Toast.LENGTH_LONG).show();
+        // Fallback: ordinary Home intent, but only if that isn't FridgeDash itself
+        // (when FridgeDash is the Home app it would just reopen us).
+        ComponentName def = currentDefault(ctx.getPackageManager());
+        if (def != null && !def.getPackageName().equals(ctx.getPackageName())) {
+            try {
+                ctx.startActivity(homeQuery().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return;
+            } catch (ActivityNotFoundException ignored) {
+            }
+        }
+        Toast.makeText(ctx, "Couldn't open the Hisense home screen. Open Settings → "
+                + "Refrigerator button & diagnostics to pick it.", Toast.LENGTH_LONG).show();
+    }
+
+    static boolean isFridgeDashDefault(Context ctx) {
+        ComponentName def = currentDefault(ctx.getPackageManager());
+        return def != null && def.getPackageName().equals(ctx.getPackageName());
+    }
+
+    /** Opens Android's "Home app" chooser (Default apps). */
+    static void openHomeSettings(Context ctx) {
+        String[] actions = {
+                android.provider.Settings.ACTION_HOME_SETTINGS,
+                "android.settings.MANAGE_DEFAULT_APPS_SETTINGS",
+                android.provider.Settings.ACTION_SETTINGS
+        };
+        for (String a : actions) {
+            try {
+                ctx.startActivity(new Intent(a).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return;
+            } catch (Exception ignored) {
+            }
         }
     }
 }

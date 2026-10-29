@@ -40,6 +40,7 @@ public class SettingsActivity extends BaseActivity {
 
     private LinearLayout col;
     private EditText keyField, modelField;
+    private TextView homeButton;
     private TextView keyStatus, micStatus, voiceButton, bargeButton, wallButton, sizeButton, updateStatus;
     private boolean keyVisible;
     private UpdateFlow updates;
@@ -134,11 +135,25 @@ public class SettingsActivity extends BaseActivity {
         col.addView(updateStatus);
         updates = new UpdateFlow(this, bg, updateStatus, null, updateButton);
 
+        homeButton = button("", v -> FridgeHome.openHomeSettings(this), false);
+        col.addView(homeButton, full());
+        col.addView(note("Choose \"FridgeDash\" there to open FridgeDash with the Home button. "
+                + "To go back to the original screen, choose \"Home\" (the blue house) in the same menu. "
+                + "Test the Fridge button first."));
+
         col.addView(button("Refrigerator button & diagnostics", v ->
                 startActivity(new Intent(this, DiagnosticsActivity.class)), false), full());
         col.addView(button("All apps", v -> startActivity(new Intent(this, AppsActivity.class)), false), full());
         col.addView(button("Android settings", v -> Ui.start(this,
                 new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)), false), full());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        homeButton.setText(FridgeHome.isFridgeDashDefault(this)
+                ? "Home button opens: FridgeDash  (tap to change)"
+                : "Home button opens: Hisense  (tap to make it FridgeDash)");
     }
 
     @Override
