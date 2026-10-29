@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple original icon: a two-door fridge outline on a blue rounded square. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF2D7FF9"
+        android:pathData="M10,2 H38 A8,8 0 0 1 46,10 V38 A8,8 0 0 1 38,46 H10 A8,8 0 0 1 2,38 V10 A8,8 0 0 1 10,2 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16,9 H32 A3,3 0 0 1 35,12 V36 A3,3 0 0 1 32,39 H16 A3,3 0 0 1 13,36 V12 A3,3 0 0 1 16,9 Z" />
+    <path
+        android:fillColor="#FF2D7FF9"
+        android:pathData="M13,19 H35 V21 H13 Z" />
+    <path
+        android:fillColor="#FF2D7FF9"
+        android:pathData="M17,13 H19 V17 H17 Z M17,24 H19 V31 H17 Z" />
+</vector>

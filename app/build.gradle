@@ -1,0 +1,55 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version: "0.2.<build>" where <build> is the GitHub Actions run number.
+// versionCode must always increase so the in-app updater (and Android) accept new builds.
+def versionBase = '0.2'
+def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
+
+// The keystore in this repo is AES-256 encrypted; its password lives only in the
+// GitHub Actions secret FRIDGEDASH_KEYSTORE_PASSWORD.
+def ksPassword = System.getenv('FRIDGEDASH_KEYSTORE_PASSWORD')
+
+android {
+    namespace 'app.fridgedash'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.fridgedash'
+        // The fridge reportedly runs Android 9 (API 28). targetSdk 28 matches the
+        // device so no newer-platform behaviour changes apply.
+        minSdk 24
+        targetSdk 28
+        versionCode buildNumber
+        versionName "${versionBase}.${buildNumber}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('fridgedash.keystore')
+            storePassword ksPassword
+            keyAlias 'fridgedash'
+            keyPassword ksPassword
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig ksPassword ? signingConfigs.release : null
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+// No dependencies on purpose: no AndroidX, no Google Play Services.
