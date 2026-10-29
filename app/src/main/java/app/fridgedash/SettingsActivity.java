@@ -42,6 +42,8 @@ public class SettingsActivity extends BaseActivity {
     private EditText keyField, modelField;
     private TextView homeButton;
     private TextView inputButton;
+    private EditText briefUrlField, briefTokenField;
+    private TextView briefStatus;
     private TextView gainButton;
     private TextView keyStatus, micStatus, voiceButton, bargeButton, wallButton, sizeButton, updateStatus;
     private boolean keyVisible;
@@ -130,6 +132,46 @@ public class SettingsActivity extends BaseActivity {
         modelField.setText(Prefs.model(this));
         col.addView(modelField);
 
+        // ---------------------------------------------------------- Daily brief
+        section("Daily brief");
+        col.addView(note("Grok saves the brief as brief.json in your private GitHub repo; the fridge reads it "
+                + "every 5 minutes. Paste a read-only GitHub key (fine-grained token with Contents: Read-only "
+                + "on armadocs/fridge-brief)."));
+        col.addView(text("Brief file link", 12, false));
+        briefUrlField = new EditText(this);
+        briefUrlField.setSingleLine(true);
+        briefUrlField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        briefUrlField.setTextColor(getColor(R.color.text));
+        String bu = Prefs.briefUrl(this);
+        briefUrlField.setText(bu.isEmpty() ? Brief.DEFAULT_URL : bu);
+        col.addView(briefUrlField);
+        col.addView(text("GitHub read key", 12, false));
+        briefTokenField = new EditText(this);
+        briefTokenField.setSingleLine(true);
+        briefTokenField.setHint("github_pat_…");
+        briefTokenField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        briefTokenField.setTextColor(getColor(R.color.text));
+        briefTokenField.setHintTextColor(getColor(R.color.text_dim));
+        briefTokenField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        briefTokenField.setTypeface(Typeface.MONOSPACE);
+        briefTokenField.setText(Prefs.briefToken(this));
+        col.addView(briefTokenField);
+        LinearLayout briefRow = row();
+        briefRow.addView(button("Paste key", v -> {
+            String t = clipboardText();
+            int at = t.indexOf("github_pat_");
+            if (at < 0) at = t.indexOf("ghp_");
+            if (at > 0) t = t.substring(at);
+            int sp = t.indexOf(' ');
+            if (sp > 0) t = t.substring(0, sp);
+            briefTokenField.setText(t.trim());
+            saveAndTestBrief();
+        }, true), weighted());
+        briefRow.addView(button("Save & load now", v -> saveAndTestBrief(), true), weighted());
+        col.addView(briefRow);
+        briefStatus = note(Prefs.briefUrl(this).isEmpty() ? "Not connected yet." : "Connected.");
+        col.addView(briefStatus);
+
         // ---------------------------------------------------------- Screen
         section("Screen");
         wallButton = button("", v -> {
@@ -180,6 +222,39 @@ public class SettingsActivity extends BaseActivity {
         // Save typed values when leaving.
         Prefs.setApiKey(this, keyField.getText().toString());
         Prefs.setModel(this, modelField.getText().toString());
+        Prefs.setBriefUrl(this, briefUrlField.getText().toString());
+        Prefs.setBriefToken(this, briefTokenField.getText().toString());
+    }
+
+    private String clipboardText() {
+        ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = cb == null ? null : cb.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return "";
+        CharSequence t = clip.getItemAt(0).coerceToText(this);
+        return t == null ? "" : t.toString().trim();
+    }
+
+    private void saveAndTestBrief() {
+        Prefs.setBriefUrl(this, briefUrlField.getText().toString());
+        Prefs.setBriefToken(this, briefTokenField.getText().toString());
+        Prefs.raw(this).edit().remove("brief_etag").apply();
+        briefStatus.setText("Loading…");
+        final Context app = getApplicationContext();
+        bg.execute(() -> {
+            String msg;
+            try {
+                Brief b = Brief.fetch(app);
+                if (b == null) b = Brief.cached(app);
+                int items = 0;
+                if (b != null) for (Brief.Section sct : b.sections) items += sct.items.size();
+                msg = b == null ? "Nothing loaded." : "✓ Loaded the brief for " + (b.date.isEmpty() ? "?" : b.date)
+                        + ": " + b.sections.size() + " sections, " + items + " items.";
+            } catch (Exception e) {
+                msg = "✗ " + e.getMessage();
+            }
+            final String m = msg;
+            main.post(() -> { if (!isDestroyed()) briefStatus.setText(m); });
+        });
     }
 
     @Override

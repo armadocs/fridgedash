@@ -176,53 +176,7 @@
                 android:id="@+id/todayColumn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif"
-                    android:text="Today"
-                    android:textColor="#FFF4F6FB"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/briefSubtitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="Armada daily brief"
-                    android:textColor="#B8E8ECF5"
-                    android:textSize="10sp" />
-
-                <app.fridgedash.GlassLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    app:glassRadius="18dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:letterSpacing="0.1"
-                        android:text="NEEDS YOU"
-                        android:textColor="#FFF5B14C"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:lineSpacingMultiplier="1.25"
-                        android:text="Your daily brief will appear here once it's connected. That's the next update."
-                        android:textColor="#B8E8ECF5"
-                        android:textSize="11sp" />
-                </app.fridgedash.GlassLayout>
-            </LinearLayout>
+                android:orientation="vertical" />
         </ScrollView>
 
         <!-- Dock: talk button in the centre, small menu on an arc -->

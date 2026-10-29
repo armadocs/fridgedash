@@ -31,6 +31,16 @@ public class MainActivity extends BaseActivity {
     private ConnectivityManager cm;
     private ConnectivityManager.NetworkCallback netCallback;
     private int loadedW, loadedH;
+    private BriefView briefView;
+    private Brief brief;
+    private boolean briefBusy;
+    private static final long BRIEF_REFRESH_MS = 5 * 60 * 1000;
+    private final Runnable briefTimer = new Runnable() {
+        @Override public void run() {
+            refreshBrief();
+            main.postDelayed(this, BRIEF_REFRESH_MS);
+        }
+    };
     private boolean wallpaperBusy;
 
     @Override
@@ -55,6 +65,8 @@ public class MainActivity extends BaseActivity {
         findViewById(R.id.dockApps).setOnClickListener(v ->
                 startActivity(new Intent(this, AppsActivity.class)));
 
+        briefView = new BriefView(this, findViewById(R.id.todayColumn));
+
         View bannerBox = findViewById(R.id.updateBannerBox);
         updates = new UpdateFlow(this, bg, findViewById(R.id.updateBanner), bannerBox, null);
 
@@ -75,6 +87,51 @@ public class MainActivity extends BaseActivity {
         updates.autoCheck();
         if (loadedW > 0) loadWallpaper(); // picks up a setting change
         if (Wallpaper.refreshDue(this)) refreshWallpaper();
+        showBrief(null);
+        main.removeCallbacks(briefTimer);
+        main.post(briefTimer);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        main.removeCallbacks(briefTimer);
+    }
+
+    // ------------------------------------------------------------------ daily brief
+
+    private void showBrief(String status) {
+        if (brief == null) brief = Brief.cached(this);
+        if (brief != null) {
+            briefView.show(brief, status);
+        } else if (!Brief.configured(this)) {
+            briefView.showMessage("Today", "Your daily brief will appear here. Connect it in Settings → Daily brief.");
+        } else {
+            briefView.showMessage("Today", status != null ? status : "Loading your daily brief…");
+        }
+    }
+
+    private void refreshBrief() {
+        if (briefBusy || !Brief.configured(this)) return;
+        briefBusy = true;
+        final android.content.Context app = getApplicationContext();
+        bg.execute(() -> {
+            Brief fresh = null;
+            String err = null;
+            try {
+                fresh = Brief.fetch(app);
+            } catch (Exception e) {
+                err = e.getMessage();
+            }
+            final Brief f = fresh;
+            final String e = err;
+            main.post(() -> {
+                briefBusy = false;
+                if (isDestroyed()) return;
+                if (f != null) brief = f;
+                showBrief(e == null ? null : (brief != null ? "offline copy" : "Couldn't load: " + e));
+            });
+        });
     }
 
     @Override
@@ -157,6 +214,7 @@ public class MainActivity extends BaseActivity {
             @Override public void onAvailable(Network n) {
                 main.post(() -> {
                     updateNetwork();
+                    refreshBrief();
                     if (Wallpaper.refreshDue(MainActivity.this)) refreshWallpaper();
                 });
             }

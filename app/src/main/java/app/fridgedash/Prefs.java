@@ -68,5 +68,11 @@ final class Prefs {
     static int micGain(Context c) { return p(c).getInt("mic_gain", 12); }
     static void setMicGain(Context c, int v) { p(c).edit().putInt("mic_gain", v).apply(); }
 
+    /** Where the daily brief JSON lives, and the read-only key for it (GitHub fine-grained token). */
+    static String briefUrl(Context c) { return p(c).getString("brief_url", "").trim(); }
+    static void setBriefUrl(Context c, String v) { p(c).edit().putString("brief_url", v == null ? "" : v.trim()).apply(); }
+    static String briefToken(Context c) { return p(c).getString("brief_token", "").trim(); }
+    static void setBriefToken(Context c, String v) { p(c).edit().putString("brief_token", v == null ? "" : v.trim()).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

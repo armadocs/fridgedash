@@ -62,6 +62,11 @@ public class GlassLayout extends LinearLayout {
         pressed.setColor(0x22FFFFFF);
     }
 
+    public void setPill(boolean p) {
+        pill = p;
+        invalidate();
+    }
+
     public void setTintColor(int color) {
         tint.setColor(color);
         invalidate();
