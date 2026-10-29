@@ -118,6 +118,44 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         loadPiece(null, true);
     }
 
+    // ------------------------------------------------------------------ collections (albums + paintings)
+
+    static final String PAINTINGS = "paintings";
+
+    /** Album links in Settings order, then the paintings. */
+    static java.util.List<String> collections(android.content.Context c) {
+        java.util.List<String> out = new java.util.ArrayList<>(Photos.links(c));
+        out.add(PAINTINGS);
+        return out;
+    }
+
+    static String currentCollection(android.content.Context c) {
+        java.util.List<String> all = collections(c);
+        String cur = Prefs.artCollection(c);
+        return all.contains(cur) ? cur : all.get(0); // default: first album if there is one
+    }
+
+    static String collectionName(android.content.Context c, String key) {
+        if (PAINTINGS.equals(key)) return "Famous paintings";
+        java.util.List<String> links = Photos.links(c);
+        java.util.List<String> names = Photos.cachedNames(c);
+        int i = links.indexOf(key);
+        return i >= 0 && i < names.size() ? names.get(i) : "Album";
+    }
+
+    /** Up/down: next or previous collection. */
+    private void switchCollection(int dir) {
+        java.util.List<String> all = collections(this);
+        if (all.size() < 2) { caption.setText("Only one collection. Add Google Photos albums in Settings → Art mode."); return; }
+        int i = all.indexOf(currentCollection(this));
+        String next = all.get(((i + dir) % all.size() + all.size()) % all.size());
+        Prefs.setArtCollection(this, next);
+        history.clear();
+        pos = -1;
+        caption.setText("▸ " + collectionName(this, next) + " …");
+        loadPiece(null, true);
+    }
+
     private void loadPrevious() {
         if (pos > 0) { pos--; loadPiece(history.get(pos), false); }
     }
@@ -134,7 +172,13 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
             String err = null;
             try {
                 if (wanted == null) {
-                    r = Art.next(app, w, h, avoid);
+                    String col = currentCollection(app);
+                    if (PAINTINGS.equals(col)) {
+                        r = Art.next(app, w, h, avoid);
+                    } else {
+                        Photos.Album album = Photos.album(app, col, false);
+                        r = Art.pickFrom(album.items, w, h, avoid);
+                    }
                 } else {
                     StringBuilder errs = new StringBuilder();
                     Bitmap b = Art.load(wanted, w, h, errs);
@@ -151,7 +195,7 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
                 loading = false;
                 if (isDestroyed()) return;
                 if (fr == null) {
-                    if (currentImage.isEmpty()) caption.setText("Couldn't load art: " + fe + " (tap to go back)");
+                    if (history.isEmpty()) caption.setText("Couldn't load: " + fe + " (tap to go back)");
                     return;
                 }
                 if (addToHistory) {
@@ -180,7 +224,7 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         mattes[front].animate().alpha(0f).setDuration(1600).start();
         front = back;
         currentImage = p.image;
-        StringBuilder c = new StringBuilder(p.title);
+        StringBuilder c = new StringBuilder(p.title.isEmpty() ? p.museum : p.title); // photos: album name
         if (!p.artist.isEmpty()) c.append(" · ").append(p.artist);
         if (!p.date.isEmpty()) c.append(", ").append(p.date);
         caption.setText(c);
@@ -214,6 +258,16 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         int k = ev.getKeyCode();
         boolean next = k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_PAGE_DOWN || k == KeyEvent.KEYCODE_MEDIA_NEXT;
         boolean prev = k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_PAGE_UP || k == KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+        boolean up = k == KeyEvent.KEYCODE_DPAD_UP, down = k == KeyEvent.KEYCODE_DPAD_DOWN;
+        if (up || down) {
+            if (ev.getAction() == KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) {
+                startedAt = System.currentTimeMillis();
+                main.removeCallbacks(rotate);
+                switchCollection(down ? 1 : -1);
+                main.postDelayed(rotate, Prefs.artIntervalMin(this) * 60_000L);
+            }
+            return true;
+        }
         if (next || prev) {
             if (ev.getAction() == KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) {
                 startedAt = System.currentTimeMillis();

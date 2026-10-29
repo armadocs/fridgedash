@@ -49,7 +49,8 @@ public class SettingsActivity extends BaseActivity {
     private TextView notionStatus;
     private TextView gainButton;
     private TextView remoteStatus, remoteButton;
-    private TextView artIdleButton, artIntervalButton, orientButton;
+    private TextView artIdleButton, artIntervalButton, orientButton, albumsStatus, collectionButton;
+    private EditText albumsField;
     private final Runnable remoteTick = new Runnable() {
         @Override public void run() {
             refreshRemote();
@@ -319,6 +320,38 @@ public class SettingsActivity extends BaseActivity {
             refreshArt();
         }, false);
         col.addView(artIntervalButton, full());
+        col.addView(text("Google Photos shared albums (one link per line)", 12, false));
+        albumsField = new EditText(this);
+        albumsField.setMinLines(2);
+        albumsField.setMaxLines(6);
+        albumsField.setHint("https://photos.app.goo.gl/…");
+        albumsField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        albumsField.setTextColor(getColor(R.color.text));
+        albumsField.setHintTextColor(getColor(R.color.text_dim));
+        albumsField.setText(Prefs.photoAlbums(this));
+        col.addView(albumsField);
+        col.addView(note("In Google Photos: open the album → Share → Create link → copy. Paste it here (email it to "
+                + "yourself and copy it in this device's browser). New photos in the album appear within a few hours. "
+                + "Unofficial: Google could change their page and break this."));
+        LinearLayout albumRow = row();
+        albumRow.addView(button("Paste", v -> {
+            String clip = clipboardText();
+            if (clip.isEmpty()) return;
+            String cur = albumsField.getText().toString().trim();
+            albumsField.setText(cur.isEmpty() ? clip.trim() : cur + "\n" + clip.trim());
+        }, false), weighted());
+        albumRow.addView(button("Save & check albums", v -> checkAlbums(), true), weighted());
+        col.addView(albumRow);
+        albumsStatus = note("");
+        col.addView(albumsStatus);
+        collectionButton = button("", v -> {
+            java.util.List<String> all = ArtActivity.collections(this);
+            int i = all.indexOf(ArtActivity.currentCollection(this));
+            Prefs.setArtCollection(this, all.get((i + 1) % all.size()));
+            refreshArt();
+        }, false);
+        col.addView(collectionButton, full());
+        col.addView(note("On the frame: ← → change the picture, ↑ ↓ switch between your albums and the paintings."));
         col.addView(button("Show art now", v -> startActivity(new Intent(this, ArtActivity.class)), true), full());
         col.addView(button("Gesture test (wave in front of the sensor)",
                 v -> startActivity(new Intent(this, GestureTestActivity.class)), false), full());
@@ -368,6 +401,7 @@ public class SettingsActivity extends BaseActivity {
         Prefs.setApiKey(this, keyField.getText().toString());
         Prefs.setModel(this, modelField.getText().toString());
         Prefs.setExtraInstructions(this, extraField.getText().toString());
+        Prefs.setPhotoAlbums(this, albumsField.getText().toString());
         Prefs.setHomeCity(this, cityField.getText().toString());
         Prefs.setBriefUrl(this, briefUrlField.getText().toString());
         Prefs.setBriefToken(this, briefTokenField.getText().toString());
@@ -623,10 +657,43 @@ public class SettingsActivity extends BaseActivity {
         return options[0];
     }
 
+    private void checkAlbums() {
+        Prefs.setPhotoAlbums(this, albumsField.getText().toString());
+        java.util.List<String> links = Photos.links(this);
+        if (links.isEmpty()) {
+            albumsStatus.setText(Prefs.photoAlbums(this).isEmpty() ? "No albums." 
+                    : "✗ That doesn't look like a Google Photos share link (photos.app.goo.gl/… or photos.google.com/share/…).");
+            refreshArt();
+            return;
+        }
+        albumsStatus.setText("Checking " + links.size() + " album(s)…");
+        final android.content.Context app = getApplicationContext();
+        bg.execute(() -> {
+            StringBuilder sb = new StringBuilder();
+            for (String l : links) {
+                try {
+                    Photos.Album a = Photos.album(app, l, true);
+                    sb.append("✓ ").append(a.name.isEmpty() ? "Album" : a.name).append(": ")
+                            .append(a.items.size()).append(" photos\n");
+                } catch (Exception e) {
+                    sb.append("✗ ").append(l.length() > 40 ? l.substring(0, 40) + "…" : l).append(": ")
+                            .append(e.getMessage()).append('\n');
+                }
+            }
+            main.post(() -> {
+                if (isDestroyed()) return;
+                albumsStatus.setText(sb.toString().trim());
+                refreshArt();
+            });
+        });
+    }
+
     private void refreshArt() {
         int idle = Prefs.artIdleMin(this), every = Prefs.artIntervalMin(this);
         artIdleButton.setText("Show art when idle: " + (idle == 0 ? "Off" : "after " + idle + " min") + "   (tap to change)");
-        artIntervalButton.setText("New painting every: " + every + " min   (tap to change)");
+        artIntervalButton.setText("New picture every: " + every + " min   (tap to change)");
+        collectionButton.setText("Showing: " + ArtActivity.collectionName(this, ArtActivity.currentCollection(this))
+                + "   (tap to change)");
     }
 
     private void refreshRemote() {

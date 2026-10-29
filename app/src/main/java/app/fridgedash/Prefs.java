@@ -128,5 +128,13 @@ final class Prefs {
     static String orientation(Context c) { return p(c).getString("orientation", "auto"); }
     static void setOrientation(Context c, String v) { p(c).edit().putString("orientation", v).apply(); }
 
+    /** Google Photos shared-album links, one per line. */
+    static String photoAlbums(Context c) { return p(c).getString("photo_albums", "").trim(); }
+    static void setPhotoAlbums(Context c, String v) { p(c).edit().putString("photo_albums", v == null ? "" : v.trim()).apply(); }
+
+    /** What art mode shows: "paintings" or an album's share link. */
+    static String artCollection(Context c) { return p(c).getString("art_collection", ""); }
+    static void setArtCollection(Context c, String v) { p(c).edit().putString("art_collection", v).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

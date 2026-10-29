@@ -46,7 +46,7 @@ final class Art {
     private static final long LIST_MAX_AGE = 7L * 24 * 3600 * 1000;
     private static final String UA = "FridgeDash art mode (personal home display)";
     /** Image servers sit behind bot protection that turns away non-browser requests. */
-    private static final String BROWSER_UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 "
+    static final String BROWSER_UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 "
             + "(KHTML, like Gecko) Chrome/120.0 Safari/537.36";
     private static final String KEY_LIST_V = "art_list_v";
     private static OkHttpClient http;
@@ -225,8 +225,12 @@ final class Art {
 
     /** Picks a random painting (not the last one) and decodes it for a w×h screen. */
     static Object[] next(Context c, int w, int h, String avoid) throws Exception {
-        List<Piece> everything = list(c);
-        if (everything.isEmpty()) throw new IOException("no paintings");
+        return pickFrom(list(c), w, h, avoid);
+    }
+
+    /** Picks a random item shaped like the screen from any collection (paintings or a photo album). */
+    static Object[] pickFrom(List<Piece> everything, int w, int h, String avoid) throws Exception {
+        if (everything.isEmpty()) throw new IOException("nothing to show");
         // Only paintings shaped like the screen; if there are too few, at least the same orientation.
         double screen = w / (double) h;
         List<Piece> all = new ArrayList<>();
@@ -250,6 +254,13 @@ final class Art {
     static Bitmap load(Piece p, int w, int h, StringBuilder errs) {
         {
             // The Art Institute caches 843-px-wide images; larger ones are sometimes refused.
+            if (p.image.contains("googleusercontent.com")) {
+                // Google Photos serves any size: ask for one that just covers this screen.
+                double sr = w / (double) h;
+                int rw = w, rh = h;
+                if (p.ratio > 0) { if (p.ratio > sr) rw = (int) Math.round(h * p.ratio); else rh = (int) Math.round(w / p.ratio); }
+                p = copyWithImage(p, p.image + "=w" + Math.min(rw, 4096) + "-h" + Math.min(rh, 4096));
+            }
             String[] urls = p.image.contains("/full/1686,/")
                     ? new String[]{p.image, p.image.replace("/full/1686,/", "/full/843,/")}
                     : new String[]{p.image};
@@ -295,7 +306,14 @@ final class Art {
         return small;
     }
 
-    private static String text(Request r) throws IOException {
+    private static Piece copyWithImage(Piece p, String url) {
+        Piece q = new Piece();
+        q.title = p.title; q.artist = p.artist; q.date = p.date; q.museum = p.museum; q.ratio = p.ratio;
+        q.image = url;
+        return q;
+    }
+
+    static String text(Request r) throws IOException {
         return new String(bytes(r), StandardCharsets.UTF_8);
     }
 
