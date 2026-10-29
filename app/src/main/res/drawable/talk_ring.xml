@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Soft halo around the talk button. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <gradient
+        android:centerColor="#4478A0FF"
+        android:endColor="#0078A0FF"
+        android:gradientRadius="50%p"
+        android:startColor="#6678A0FF"
+        android:type="radial" />
+</shape>

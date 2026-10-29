@@ -11,25 +11,32 @@ import android.widget.Toast;
 import java.io.File;
 import java.util.concurrent.ExecutorService;
 
-/** Check → confirm → download → install, driven from the dashboard. */
+/**
+ * Check → confirm → download → install.
+ * {@code banner} shows status text; {@code bannerBox} is the view shown/hidden
+ * around it (may be the banner itself); {@code button} (optional) is a
+ * "Check for updates" control.
+ */
 final class UpdateFlow {
     private final Activity act;
     private final ExecutorService bg;
     private final TextView banner;
-    private final TextView button;
+    private final View bannerBox;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private Updater.Info available;
     private boolean busy;
 
-    UpdateFlow(Activity act, ExecutorService bg, TextView banner, TextView button) {
+    UpdateFlow(Activity act, ExecutorService bg, TextView banner, View bannerBox, TextView button) {
         this.act = act;
         this.bg = bg;
         this.banner = banner;
-        this.button = button;
-        button.setText("Update\nv" + Updater.installedVersionName(act));
-        button.setOnClickListener(v -> check(true));
-        banner.setOnClickListener(v -> {
+        this.bannerBox = bannerBox != null ? bannerBox : banner;
+        if (button != null) {
+            button.setText("Check for updates  ·  v" + Updater.installedVersionName(act));
+            button.setOnClickListener(v -> check(true));
+        }
+        this.bannerBox.setOnClickListener(v -> {
             if (available != null && !busy) confirm(available);
         });
     }
@@ -38,8 +45,10 @@ final class UpdateFlow {
     void autoCheck() {
         if (Updater.autoCheckDue(act)) check(false);
         else if (available != null && Updater.isNewer(act, available)) showAvailable(available);
-        else banner.setVisibility(View.GONE);
+        else hide();
     }
+
+    void checkNow() { check(true); }
 
     private void check(boolean userAsked) {
         if (busy) return;
@@ -64,7 +73,7 @@ final class UpdateFlow {
                     if (userAsked) confirm(fInfo);
                 } else {
                     available = null;
-                    banner.setVisibility(View.GONE);
+                    hide();
                     if (userAsked) {
                         toast(fError != null ? "Update check failed: " + fError
                                 : "FridgeDash is up to date (v" + Updater.installedVersionName(act) + ")");
@@ -92,7 +101,7 @@ final class UpdateFlow {
                     .setTitle("One-time permission")
                     .setMessage("Android needs you to allow FridgeDash to install updates.\n\n"
                             + "On the next screen, turn on \"Allow from this source\", "
-                            + "press Back, then tap the update banner again.")
+                            + "press Back, then tap the update notice again.")
                     .setPositiveButton("Open settings", (d, w) -> Ui.start(act, Updater.unknownSourcesSettings(act)))
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -117,24 +126,24 @@ final class UpdateFlow {
             main.post(() -> {
                 busy = false;
                 if (act.isDestroyed()) return;
-                if (ok) {
-                    showAvailable(info);
-                    Ui.start(act, Updater.installIntent());
-                } else {
-                    showAvailable(info);
-                    toast("Download failed: " + fError);
-                }
+                showAvailable(info);
+                if (ok) Ui.start(act, Updater.installIntent());
+                else toast("Download failed: " + fError);
             });
         });
     }
 
     private void showAvailable(Updater.Info info) {
-        showBanner("Update available: v" + info.versionName + " — tap to install");
+        showBanner("Update available: v" + info.versionName + "  ·  tap to install");
     }
 
     private void showBanner(String text) {
         banner.setText(text);
-        banner.setVisibility(View.VISIBLE);
+        bannerBox.setVisibility(View.VISIBLE);
+    }
+
+    private void hide() {
+        bannerBox.setVisibility(View.GONE);
     }
 
     private void toast(String s) {

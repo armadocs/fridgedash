@@ -52,7 +52,7 @@ import java.util.Set;
  * which Home activity the Refrigerator button opens. Nothing here modifies
  * other apps or system settings.
  */
-public class DiagnosticsActivity extends Activity {
+public class DiagnosticsActivity extends BaseActivity {
 
     private static final int REQ_STORAGE = 1;
     private static final int MAX_ACTIVITIES = 60;
@@ -266,6 +266,30 @@ public class DiagnosticsActivity extends Activity {
             sb.append("USB debugging setting: ").append(android.provider.Settings.Global.getInt(
                     ctx.getContentResolver(), android.provider.Settings.Global.ADB_ENABLED, 0) == 1 ? "on" : "off").append('\n');
         } catch (Exception ignored) {}
+        sb.append('\n');
+
+        sb.append("== Audio (for ChatGPT voice) ==\n");
+        sb.append("Microphone feature: ").append(pm.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)).append('\n');
+        sb.append("Mic permission granted: ").append(ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED).append('\n');
+        try {
+            android.media.AudioManager audio = (android.media.AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (audio != null) {
+                for (android.media.AudioDeviceInfo d : audio.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS)) {
+                    sb.append("Input: type ").append(d.getType()).append(" \"").append(d.getProductName()).append("\"\n");
+                }
+                for (android.media.AudioDeviceInfo d : audio.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)) {
+                    sb.append("Output: type ").append(d.getType()).append(" \"").append(d.getProductName()).append("\"\n");
+                }
+                sb.append("Media volume: ").append(audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC))
+                        .append(" / ").append(audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)).append('\n');
+            }
+        } catch (Exception e) {
+            sb.append("Audio devices: ").append(e.getClass().getSimpleName()).append('\n');
+        }
+        sb.append("Echo canceller available: ").append(android.media.audiofx.AcousticEchoCanceler.isAvailable()).append('\n');
+        sb.append("Noise suppressor available: ").append(android.media.audiofx.NoiseSuppressor.isAvailable()).append('\n');
+        sb.append("UI canvas width: ").append(Prefs.uiWidthDp(ctx)).append(" dp\n");
         sb.append('\n');
 
         sb.append("== Updates ==\n");

@@ -1,15 +1,26 @@
 # FridgeDash
 
 A lightweight launcher/dashboard for the Hisense RQ760N4IFE refrigerator screen
-(Android, no Google services). Plain Android Views, Java, no third-party
-libraries, no background services.
+(Android, no Google services). Plain Android Views and Java; the only library is
+OkHttp (for the voice WebSocket). No background services.
 
-## Features (v0.2)
+## Features (v0.3)
 
-- **Dashboard:** clock, date, network status, a large **Refrigerator** button
-  back to the Hisense home screen, shortcut tiles (Fridge controls, Home
-  Assistant, Browser, F-Droid — only those actually installed), and a grid of
-  all apps. Long-press an app for its Android App Info.
+- **Home screen:** glass cards over a daily portrait nature photo (Bing photo of
+  the day, cached on the device; bundled landscape until the first download).
+  Clock, date, Wi-Fi, today's brief (placeholder until the brief is connected),
+  and a dock: Fridge · Home Assistant · **Ask ChatGPT** · Calendar · Apps.
+- **ChatGPT voice:** full-screen call using OpenAI's Realtime API
+  (`gpt-realtime-2.1`, WebSocket, 24 kHz PCM). The API key is entered on the
+  fridge in Settings and stored only there. The mic pauses while ChatGPT speaks
+  unless "interrupt by speaking" is on. Leaving the screen ends the call; 2 min of
+  silence hangs up.
+- **Settings:** API key (paste + test), voice, mic test, model, daily photo
+  on/off, text size, updates.
+- **Layout scaling:** every screen is laid out on a fixed 540dp-wide canvas
+  (adjustable), so the design matches the mockup whatever the panel density.
+
+- **Apps:** grid of all installed apps. Long-press an app for its Android App Info.
 - **Diagnostics:** read-only report of Android version, CPU ABIs, screen size
   and density, RAM/storage, WebView version, Google services, all Home-screen
   apps, vendor system apps and their activities. Lets you test-launch each Home
@@ -40,7 +51,7 @@ publishes a GitHub Release containing:
   photo transfer (first install / fallback)
 - `version.json`: what the in-app updater reads
 
-Version is `0.2.<run number>`; versionCode is the run number.
+Version is `<base>.<run number>`; versionCode is the run number.
 
 Locally: Android Studio, or `gradle assembleRelease` with JDK 17 and the
 Android SDK (compileSdk 34).

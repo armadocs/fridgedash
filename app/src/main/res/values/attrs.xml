@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="GlassLayout">
+        <!-- Corner radius; ignored when glassPill is true. -->
+        <attr name="glassRadius" format="dimension" />
+        <!-- Fully rounded ends (radius = half the height). -->
+        <attr name="glassPill" format="boolean" />
+        <!-- Colour laid over the blurred wallpaper. -->
+        <attr name="glassTint" format="color" />
+    </declare-styleable>
+</resources>

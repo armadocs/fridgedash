@@ -1,164 +1,381 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  Home screen. Sizes are in dp on a fixed 540dp-wide canvas (BaseActivity scales
+  it to the real panel), i.e. half the pixel sizes of the 1080x1920 mockup.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:background="#FF070B14">
 
-    <!-- Header: clock, date, network -->
+    <ImageView
+        android:id="@+id/wallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY" />
+
+    <View
+        android:id="@+id/dim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#2E050812" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="210dp"
+        android:background="@drawable/scrim_top" />
+
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="28dp"
+        android:paddingEnd="24dp">
 
-        <TextClock
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:format12Hour="h:mm"
-            android:format24Hour="HH:mm"
-            android:textColor="@color/text"
-            android:textSize="72sp" />
-
+        <!-- Header -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:gravity="bottom"
+            android:orientation="horizontal">
 
-            <TextClock
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextClock
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-light"
+                    android:format12Hour="h:mm"
+                    android:format24Hour="H:mm"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="-0.03"
+                    android:textColor="#FFF4F6FB"
+                    android:textSize="66sp" />
+
+                <TextClock
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:format12Hour="EEEE, MMMM d"
+                    android:format24Hour="EEEE, d MMMM"
+                    android:textColor="#DBF4F6FB"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:format12Hour="EEEE, d MMMM"
-                android:format24Hour="EEEE, d MMMM"
-                android:textColor="@color/text"
-                android:textSize="22sp" />
+                android:gravity="end"
+                android:orientation="vertical"
+                android:paddingBottom="3dp">
+
+                <app.fridgedash.GlassLayout
+                    android:id="@+id/btnSettings"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:clickable="true"
+                    android:contentDescription="FridgeDash settings"
+                    android:focusable="true"
+                    android:gravity="center"
+                    app:glassPill="true">
+
+                    <ImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_settings" />
+                </app.fridgedash.GlassLayout>
+
+                <app.fridgedash.GlassLayout
+                    android:id="@+id/creditChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="7dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="10dp"
+                    android:paddingTop="5dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="5dp"
+                    app:glassPill="true">
+
+                    <ImageView
+                        android:id="@+id/wifiIcon"
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:contentDescription="Wi-Fi"
+                        android:src="@drawable/ic_wifi"
+                        android:tint="#FF5ED3C4" />
+
+                    <ImageView
+                        android:layout_width="11dp"
+                        android:layout_height="11dp"
+                        android:layout_marginStart="8dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_image"
+                        android:tint="#DBF4F6FB" />
+
+                    <TextView
+                        android:id="@+id/creditText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="5dp"
+                        android:ellipsize="end"
+                        android:maxWidth="190dp"
+                        android:maxLines="1"
+                        android:textColor="#DBF4F6FB"
+                        android:textSize="8.5sp" />
+                </app.fridgedash.GlassLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Update notice -->
+        <app.fridgedash.GlassLayout
+            android:id="@+id/updateBannerBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone"
+            app:glassRadius="16dp"
+            app:glassTint="#992D7FF9">
 
             <TextView
-                android:id="@+id/netStatus"
-                android:layout_width="wrap_content"
+                android:id="@+id/updateBanner"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="@color/text_dim"
-                android:textSize="18sp" />
-        </LinearLayout>
-    </LinearLayout>
+                android:gravity="center"
+                android:minHeight="40dp"
+                android:padding="8dp"
+                android:textColor="#FFFFFFFF"
+                android:textSize="11sp" />
+        </app.fridgedash.GlassLayout>
 
-    <!-- The always-present way back to the original Hisense interface -->
-    <LinearLayout
-        android:id="@+id/fridgeHome"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/tile_primary"
-        android:clickable="true"
-        android:focusable="true"
-        android:minHeight="128dp"
-        android:gravity="center_vertical"
-        android:orientation="vertical"
-        android:paddingStart="28dp"
-        android:paddingEnd="28dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/fridge_title"
-            android:textColor="#FFFFFFFF"
-            android:textSize="34sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/fridge_subtitle"
-            android:textColor="#DDFFFFFF"
-            android:textSize="18sp" />
-    </LinearLayout>
-
-    <!-- Shortcut tiles, filled in code with whatever is actually installed -->
-    <LinearLayout
-        android:id="@+id/shortcutRow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:orientation="horizontal" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="8dp"
-        android:text="@string/all_apps"
-        android:textColor="@color/text_dim"
-        android:textSize="18sp" />
-
-    <GridView
-        android:id="@+id/appGrid"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:columnWidth="128dp"
-        android:horizontalSpacing="8dp"
-        android:numColumns="auto_fit"
-        android:stretchMode="columnWidth"
-        android:verticalSpacing="8dp" />
-
-    <!-- Shown when an update is available or downloading -->
-    <TextView
-        android:id="@+id/updateBanner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:background="@drawable/tile_primary"
-        android:gravity="center"
-        android:minHeight="64dp"
-        android:padding="12dp"
-        android:textColor="#FFFFFFFF"
-        android:textSize="19sp"
-        android:visibility="gone" />
-
-    <!-- Footer -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/btnDiagnostics"
-            android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:layout_marginEnd="8dp"
+        <!-- Today -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="16dp"
             android:layout_weight="1"
-            android:background="@drawable/tile"
-            android:gravity="center"
-            android:text="@string/diagnostics"
-            android:textColor="@color/text"
-            android:textSize="18sp" />
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:paddingBottom="16dp"
+            android:scrollbars="none">
 
-        <TextView
-            android:id="@+id/btnUpdate"
-            android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:layout_marginStart="8dp"
-            android:layout_marginEnd="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/tile"
-            android:gravity="center"
-            android:textColor="@color/text"
-            android:textSize="18sp" />
+            <LinearLayout
+                android:id="@+id/todayColumn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/btnSettings"
-            android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/tile"
-            android:gravity="center"
-            android:text="@string/android_settings"
-            android:textColor="@color/text"
-            android:textSize="18sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:text="Today"
+                    android:textColor="#FFF4F6FB"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/briefSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Armada daily brief"
+                    android:textColor="#B8E8ECF5"
+                    android:textSize="10sp" />
+
+                <app.fridgedash.GlassLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    app:glassRadius="18dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:text="NEEDS YOU"
+                        android:textColor="#FFF5B14C"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:lineSpacingMultiplier="1.25"
+                        android:text="Your daily brief will appear here once it's connected. That's the next update."
+                        android:textColor="#B8E8ECF5"
+                        android:textSize="11sp" />
+                </app.fridgedash.GlassLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Dock: talk button in the centre, small menu on an arc -->
+        <FrameLayout
+            android:layout_width="540dp"
+            android:layout_height="125dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginStart="-24dp"
+            android:layout_marginEnd="-24dp">
+
+            <View
+                android:layout_width="540dp"
+                android:layout_height="125dp"
+                android:background="@drawable/scrim_bottom" />
+
+            <app.fridgedash.GlassLayout
+                android:id="@+id/dockFridge"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="68dp"
+                android:layout_marginTop="48dp"
+                android:clickable="true"
+                android:contentDescription="Refrigerator"
+                android:focusable="true"
+                android:gravity="center"
+                app:glassPill="true">
+
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_fridge" />
+            </app.fridgedash.GlassLayout>
+
+            <TextView
+                style="@style/DockLabel"
+                android:layout_marginStart="50dp"
+                android:layout_marginTop="96dp"
+                android:text="Fridge" />
+
+            <app.fridgedash.GlassLayout
+                android:id="@+id/dockHome"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="153dp"
+                android:layout_marginTop="23dp"
+                android:clickable="true"
+                android:contentDescription="Home Assistant"
+                android:focusable="true"
+                android:gravity="center"
+                app:glassPill="true">
+
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_home" />
+            </app.fridgedash.GlassLayout>
+
+            <TextView
+                style="@style/DockLabel"
+                android:layout_marginStart="135dp"
+                android:layout_marginTop="71dp"
+                android:text="Home" />
+
+            <View
+                android:layout_width="104dp"
+                android:layout_height="104dp"
+                android:layout_marginStart="218dp"
+                android:layout_marginTop="-2dp"
+                android:background="@drawable/talk_ring" />
+
+            <FrameLayout
+                android:id="@+id/dockTalk"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginStart="235dp"
+                android:layout_marginTop="15dp"
+                android:background="@drawable/talk_button"
+                android:clickable="true"
+                android:contentDescription="Talk to ChatGPT"
+                android:elevation="8dp"
+                android:focusable="true">
+
+                <ImageView
+                    android:id="@+id/talkIcon"
+                    android:layout_width="27dp"
+                    android:layout_height="27dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_wave"
+                    android:tint="#FF0B1020" />
+            </FrameLayout>
+
+            <TextView
+                style="@style/DockLabel"
+                android:layout_width="120dp"
+                android:layout_marginStart="210dp"
+                android:layout_marginTop="96dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Ask ChatGPT"
+                android:textColor="#FFF4F6FB"
+                android:textSize="10sp" />
+
+            <app.fridgedash.GlassLayout
+                android:id="@+id/dockCalendar"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="343dp"
+                android:layout_marginTop="23dp"
+                android:clickable="true"
+                android:contentDescription="Calendar"
+                android:focusable="true"
+                android:gravity="center"
+                app:glassPill="true">
+
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_calendar" />
+            </app.fridgedash.GlassLayout>
+
+            <TextView
+                style="@style/DockLabel"
+                android:layout_marginStart="325dp"
+                android:layout_marginTop="71dp"
+                android:text="Calendar" />
+
+            <app.fridgedash.GlassLayout
+                android:id="@+id/dockApps"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="428dp"
+                android:layout_marginTop="48dp"
+                android:clickable="true"
+                android:contentDescription="All apps"
+                android:focusable="true"
+                android:gravity="center"
+                app:glassPill="true">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_apps" />
+            </app.fridgedash.GlassLayout>
+
+            <TextView
+                style="@style/DockLabel"
+                android:layout_marginStart="410dp"
+                android:layout_marginTop="96dp"
+                android:text="Apps" />
+        </FrameLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

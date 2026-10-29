@@ -1,66 +1,67 @@
 package app.fridgedash;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
-import android.widget.GridView;
-import android.widget.LinearLayout;
+import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * The dashboard. In v0.1 this is an ordinary app (not the default Home),
- * opened from KISS or the Hisense app list.
- */
-public class MainActivity extends Activity {
+/** The home screen: clock, today's brief, and the dock with the ChatGPT button. */
+public class MainActivity extends BaseActivity {
 
     private final ExecutorService bg = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
-    private AppAdapter adapter;
-    private LinearLayout shortcutRow;
-    private TextView netStatus;
+    private View root;
+    private ImageView wallpaper;
+    private TextView creditText;
+    private ImageView wifiIcon;
+    private UpdateFlow updates;
     private ConnectivityManager cm;
     private ConnectivityManager.NetworkCallback netCallback;
-    private UpdateFlow updates;
+    private int loadedW, loadedH;
+    private boolean wallpaperBusy;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        shortcutRow = findViewById(R.id.shortcutRow);
-        netStatus = findViewById(R.id.netStatus);
+        root = findViewById(R.id.root);
+        wallpaper = findViewById(R.id.wallpaper);
+        creditText = findViewById(R.id.creditText);
+        wifiIcon = findViewById(R.id.wifiIcon);
 
-        GridView grid = findViewById(R.id.appGrid);
-        grid.setSelector(android.R.color.transparent);
-        adapter = new AppAdapter(this);
-        grid.setAdapter(adapter);
-        grid.setOnItemClickListener((parent, view, pos, id) ->
-                Ui.start(this, adapter.getItem(pos).intent));
-        grid.setOnItemLongClickListener((parent, view, pos, id) -> {
-            Ui.openAppInfo(this, adapter.getItem(pos).intent);
-            return true;
-        });
-
-        findViewById(R.id.fridgeHome).setOnClickListener(v -> FridgeHome.open(this));
-        findViewById(R.id.btnDiagnostics).setOnClickListener(v ->
-                startActivity(new Intent(this, DiagnosticsActivity.class)));
         findViewById(R.id.btnSettings).setOnClickListener(v ->
-                Ui.start(this, new Intent(Settings.ACTION_SETTINGS)
+                startActivity(new Intent(this, SettingsActivity.class)));
+        findViewById(R.id.dockFridge).setOnClickListener(v -> FridgeHome.open(this));
+        findViewById(R.id.dockHome).setOnClickListener(v -> openHomeAssistant());
+        findViewById(R.id.dockTalk).setOnClickListener(v ->
+                startActivity(new Intent(this, VoiceActivity.class)));
+        findViewById(R.id.dockCalendar).setOnClickListener(v ->
+                Ui.start(this, new Intent(Intent.ACTION_VIEW, Uri.parse("https://calendar.google.com/calendar/r/day"))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+        findViewById(R.id.dockApps).setOnClickListener(v ->
+                startActivity(new Intent(this, AppsActivity.class)));
 
-        updates = new UpdateFlow(this, bg, findViewById(R.id.updateBanner), findViewById(R.id.btnUpdate));
+        View bannerBox = findViewById(R.id.updateBannerBox);
+        updates = new UpdateFlow(this, bg, findViewById(R.id.updateBanner), bannerBox, null);
+
+        // Size is known after the first layout; load the wallpaper then (and when it changes).
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (v.getWidth() != loadedW || v.getHeight() != loadedH) loadWallpaper();
+        });
 
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         watchNetwork();
@@ -69,9 +70,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        reloadApps();
+        Glass.setRoot(root);
         updateNetwork();
         updates.autoCheck();
+        if (loadedW > 0) loadWallpaper(); // picks up a setting change
+        if (Wallpaper.refreshDue(this)) refreshWallpaper();
     }
 
     @Override
@@ -83,43 +86,81 @@ public class MainActivity extends Activity {
         bg.shutdownNow();
     }
 
-    /** Package lookups run off the UI thread; the screen fills in when they finish. */
-    private void reloadApps() {
+    @Override
+    public void onBackPressed() {
+        // This is a home screen: Back does nothing rather than closing it.
+    }
+
+    private void openHomeAssistant() {
+        for (String pkg : Apps.PKG_HOME_ASSISTANT) {
+            AppEntry e = Apps.entryForPackage(getPackageManager(), pkg, null);
+            if (e != null) { Ui.start(this, e.intent); return; }
+        }
+        Toast.makeText(this, "Home Assistant app isn't installed", Toast.LENGTH_SHORT).show();
+    }
+
+    // ------------------------------------------------------------------ wallpaper
+
+    private void loadWallpaper() {
+        final int w = root.getWidth(), h = root.getHeight();
+        if (w <= 0 || h <= 0 || wallpaperBusy) return;
+        wallpaperBusy = true;
         final Context app = getApplicationContext();
         bg.execute(() -> {
-            final List<AppEntry> apps = Apps.loadLaunchable(app);
-            final List<AppEntry> shortcuts = Apps.loadShortcuts(app);
+            Wallpaper.Images imgs = null;
+            try {
+                imgs = Wallpaper.load(app, w, h);
+            } catch (Throwable ignored) {
+                // Out of memory or a bad file: keep the plain background.
+            }
+            final Wallpaper.Images fImgs = imgs;
             main.post(() -> {
-                if (isDestroyed()) return;
-                adapter.setApps(apps);
-                showShortcuts(shortcuts);
+                wallpaperBusy = false;
+                if (isDestroyed() || fImgs == null || fImgs.sharp == null) return;
+                loadedW = w;
+                loadedH = h;
+                wallpaper.setImageBitmap(fImgs.sharp);
+                Glass.setBackdrop(fImgs.blurred);
+                showCredit(fImgs.credit);
             });
         });
     }
 
-    private void showShortcuts(List<AppEntry> shortcuts) {
-        shortcutRow.removeAllViews();
-        int gap = Ui.dp(this, 8);
-        for (int i = 0; i < shortcuts.size(); i++) {
-            final AppEntry e = shortcuts.get(i);
-            Ui.IconTile tile = new Ui.IconTile(this, 56, 17);
-            tile.bind(e);
-            tile.setOnClickListener(v -> Ui.start(this, e.intent));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            if (i > 0) lp.setMarginStart(gap);
-            shortcutRow.addView(tile, lp);
+    private void refreshWallpaper() {
+        final Context app = getApplicationContext();
+        bg.execute(() -> {
+            boolean changed;
+            try {
+                changed = Wallpaper.refresh(app);
+            } catch (Exception e) {
+                changed = false; // offline or Bing unreachable: keep yesterday's photo
+            }
+            if (changed) main.post(this::loadWallpaper);
+        });
+    }
+
+    private void showCredit(String credit) {
+        if (credit == null || credit.isEmpty()) {
+            creditText.setText(Prefs.dailyWallpaper(this) ? "Photo of the day loads with Wi-Fi" : "FridgeDash");
+        } else {
+            // "Title · Place (© Photographer/Agency)": keep it short for the chip.
+            int paren = credit.indexOf(" (©");
+            creditText.setText(paren > 0 ? credit.substring(0, paren) : credit);
         }
     }
+
+    // ------------------------------------------------------------------ network
 
     private void watchNetwork() {
         if (cm == null) return;
         netCallback = new ConnectivityManager.NetworkCallback() {
-            @Override public void onAvailable(Network n) { main.post(MainActivity.this::updateNetwork); }
-            @Override public void onLost(Network n) { main.post(MainActivity.this::updateNetwork); }
-            @Override public void onCapabilitiesChanged(Network n, NetworkCapabilities c) {
-                main.post(MainActivity.this::updateNetwork);
+            @Override public void onAvailable(Network n) {
+                main.post(() -> {
+                    updateNetwork();
+                    if (Wallpaper.refreshDue(MainActivity.this)) refreshWallpaper();
+                });
             }
+            @Override public void onLost(Network n) { main.post(MainActivity.this::updateNetwork); }
         };
         try {
             cm.registerDefaultNetworkCallback(netCallback);
@@ -132,19 +173,9 @@ public class MainActivity extends Activity {
         if (cm == null) return;
         Network n = cm.getActiveNetwork();
         NetworkCapabilities caps = n == null ? null : cm.getNetworkCapabilities(n);
-        String text;
-        int color;
-        if (caps == null) {
-            text = "● Offline";
-            color = getColor(R.color.warn);
-        } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-            text = "● Wi-Fi connected";
-            color = getColor(R.color.ok);
-        } else {
-            text = "● Connected";
-            color = getColor(R.color.ok);
-        }
-        netStatus.setText(text);
-        netStatus.setTextColor(color);
+        boolean online = caps != null;
+        wifiIcon.setColorFilter(online ? 0xFF5ED3C4 : 0xFFF0A44B);
+        wifiIcon.setAlpha(online ? 1f : 0.6f);
+        wifiIcon.setContentDescription(online ? "Wi-Fi connected" : "Offline");
     }
 }

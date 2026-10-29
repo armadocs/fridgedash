@@ -9,4 +9,18 @@
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:textColor">@color/text</item>
     </style>
+
+    <style name="DockLabel">
+        <item name="android:layout_width">80dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#CCE8ECF5</item>
+        <item name="android:textSize">8.5sp</item>
+    </style>
+
+    <!-- Full-screen, no system bars where the device allows it. -->
+    <style name="AppTheme.Fullscreen">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">#FF070B14</item>
+    </style>
 </resources>

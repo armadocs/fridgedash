@@ -33,7 +33,7 @@ final class AppAdapter extends BaseAdapter {
         if (convertView instanceof Ui.IconTile) {
             tile = (Ui.IconTile) convertView;
         } else {
-            tile = new Ui.IconTile(ctx, 64, 16);
+            tile = new Ui.IconTile(ctx, 44, 11);
             tile.setLayoutParams(new AbsListView.LayoutParams(
                     AbsListView.LayoutParams.MATCH_PARENT, AbsListView.LayoutParams.WRAP_CONTENT));
             // The grid handles clicks; the tile only draws.

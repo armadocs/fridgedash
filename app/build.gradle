@@ -2,9 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
-// Version: "0.2.<build>" where <build> is the GitHub Actions run number.
+// Version: "<versionBase>.<build>" where <build> is the GitHub Actions run number.
 // versionCode must always increase so the in-app updater (and Android) accept new builds.
-def versionBase = '0.2'
+def versionBase = '0.3'
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
 
 // The keystore in this repo is AES-256 encrypted; its password lives only in the
@@ -52,4 +52,8 @@ android {
     }
 }
 
-// No dependencies on purpose: no AndroidX, no Google Play Services.
+dependencies {
+    // WebSocket client for the voice call. Pure Java/Kotlin, no Google services.
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
+// Otherwise no dependencies on purpose: no AndroidX, no Google Play Services.
