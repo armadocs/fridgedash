@@ -386,30 +386,29 @@ public class SettingsActivity extends BaseActivity {
         }, "mic-test").start();
     }
 
-    /** Records 5 s exactly as a call would (scan setup + boost), then plays it back. */
+    /** Records 5 s exactly as a call would (scan setup + boost), shows a level timeline, plays it back. */
     private void recordPlayback() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC_TEST);
             return;
         }
         final Context app = getApplicationContext();
-        micStatus.setText("Recording 5 seconds… talk normally, facing the screen.");
+        micStatus.setText("Recording 5 seconds… stay quiet 1 s, then talk normally facing the screen.");
         new Thread(() -> {
-            String msg;
+            StringBuilder sb = new StringBuilder();
             MicScan.Config cfg = MicScan.Config.decode(Prefs.micScan(app));
             if (cfg == null) cfg = new MicScan.Config(MediaRecorder.AudioSource.MIC, 16000, 1, 0);
             int gain = Prefs.micGain(app);
             android.media.AudioRecord r = MicScan.open(cfg);
             if (r == null) {
-                msg = "✗ Couldn't open the microphone with the saved setup. Run the deep scan again.";
+                sb.append("✗ Couldn't open the microphone with the saved setup.");
             } else {
                 int total = cfg.rate * 5;
                 short[] mono = new short[total];
                 short[] buf = new short[cfg.rate / 10 * cfg.channels];
                 short[] one = new short[cfg.rate / 10];
+                float[] slots = new float[50];   // 100 ms each
                 int got = 0;
-                float peak = 0;
-                double sumAll = 0;
                 try {
                     r.startRecording();
                     long t0 = System.currentTimeMillis();
@@ -421,59 +420,76 @@ public class SettingsActivity extends BaseActivity {
                         if (gain > 1) VoiceSession.applyGain(src, fr, gain);
                         int take = Math.min(fr, total - got);
                         System.arraycopy(src, 0, mono, got, take);
+                        int slot = Math.min(49, got / (cfg.rate / 10));
+                        slots[slot] = Math.max(slots[slot], VoiceSession.rms(src, take));
                         got += take;
-                        float l = VoiceSession.rms(src, fr);
-                        peak = Math.max(peak, l);
-                        sumAll += l;
                     }
                 } catch (Exception e) {
-                    got = 0;
+                    sb.append("Recording error: ").append(e).append('\n');
                 } finally {
                     try { r.stop(); } catch (Exception ignored) {}
                     r.release();
                 }
-                if (got == 0) {
-                    msg = "✗ No sound data recorded.";
-                } else {
-                    final String rec = "Recorded with boost ×" + gain + ": loudest " + Math.round(peak * 100)
-                            + "%. Playing it back now…";
-                    main.post(() -> { if (!isDestroyed()) micStatus.setText(rec); });
-                    playPcm(mono, got, cfg.rate);
-                    msg = "Recorded with boost ×" + gain + ": loudest " + Math.round(peak * 100) + "%.\n"
-                            + (peak < 0.05f ? "Very quiet: raise the boost or speak closer."
-                            : peak > 0.9f ? "Very loud/distorted: lower the boost."
-                            : "Level looks usable.") + " Did you hear yourself clearly?";
+                // Timeline: one character per 100 ms.
+                String levels = " ▁▂▃▄▅▆▇█";
+                StringBuilder line = new StringBuilder();
+                int loud = 0;
+                float quietAvg = 0;
+                for (int i = 0; i < 50; i++) {
+                    int k = Math.min(8, Math.round(slots[i] * 8));
+                    line.append(levels.charAt(k));
+                    if (slots[i] > 0.05f) loud++;
+                    if (i < 10) quietAvg += slots[i] / 10f;
                 }
+                sb.append("Boost ×").append(gain).append(", ").append(got * 1000 / cfg.rate).append(" ms recorded\n");
+                sb.append("Level over 5 s (quiet → talk):\n[").append(line).append("]\n");
+                sb.append("Loud moments: ").append(loud).append(" of 50 · background ")
+                        .append(Math.round(quietAvg * 100)).append("%\n");
+                sb.append(loud >= 5 ? "→ The mic is reacting to sound over time.\n"
+                        : loud > 0 ? "→ Only a few spikes: probably clicks, not your voice.\n"
+                        : "→ Nothing above background.\n");
+                final String partial = sb.toString() + "Playing back…";
+                main.post(() -> { if (!isDestroyed()) micStatus.setText(partial); });
+                sb.append(playPcm(mono, got, cfg.rate));
             }
-            final String m = msg;
+            final String m = sb.toString();
             main.post(() -> { if (!isDestroyed()) micStatus.setText(m); });
         }, "rec-playback").start();
     }
 
-    private static void playPcm(short[] pcm, int n, int rate) {
+    /** Plays mono PCM the same way ChatGPT's voice is played (24 kHz stream). Returns a status line. */
+    private static String playPcm(short[] pcm, int n, int rate) {
+        android.media.AudioTrack t = null;
         try {
-            int lead = rate * 6 / 10;
-            short[] data = new short[lead + n];
-            System.arraycopy(pcm, 0, data, lead, n);
-            android.media.AudioTrack t = new android.media.AudioTrack.Builder()
+            byte[] data = VoiceSession.toPcm24k(pcm, n, rate);
+            int r24 = VoiceSession.RATE;
+            t = new android.media.AudioTrack.Builder()
                     .setAudioAttributes(new android.media.AudioAttributes.Builder()
                             .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                             .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(data.length * 2)
-                    .setTransferMode(android.media.AudioTrack.MODE_STATIC)
+                            .setSampleRate(r24).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                    .setBufferSizeInBytes(r24) // 0.5 s
+                    .setTransferMode(android.media.AudioTrack.MODE_STREAM)
                     .build();
-            t.write(data, 0, data.length);
             t.play();
+            byte[] lead = new byte[r24 * 6 / 10 * 2];
+            t.write(lead, 0, lead.length);              // wake the amplifier
+            int chunk = r24 / 10 * 2;
+            for (int off = 0; off < data.length; off += chunk) {
+                t.write(data, off, Math.min(chunk, data.length - off));
+            }
+            long frames = (lead.length + data.length) / 2;
             long t0 = System.currentTimeMillis();
-            while (System.currentTimeMillis() - t0 < 9000
-                    && (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) < data.length) {
+            while (System.currentTimeMillis() - t0 < 4000
+                    && (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) < frames) {
                 Thread.sleep(50);
             }
-            Thread.sleep(200);
-            t.release();
-        } catch (Exception ignored) {
+            return "Played back " + (data.length / 2 * 1000 / r24) + " ms. Did you hear yourself?";
+        } catch (Exception e) {
+            return "✗ Playback failed: " + e;
+        } finally {
+            if (t != null) { try { t.stop(); } catch (Exception ignored) {} t.release(); }
         }
     }
 
