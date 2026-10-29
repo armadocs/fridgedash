@@ -41,6 +41,7 @@ public class SettingsActivity extends BaseActivity {
     private LinearLayout col;
     private EditText keyField, modelField;
     private TextView homeButton;
+    private TextView inputButton;
     private TextView keyStatus, micStatus, voiceButton, bargeButton, wallButton, sizeButton, updateStatus;
     private boolean keyVisible;
     private UpdateFlow updates;
@@ -86,6 +87,12 @@ public class SettingsActivity extends BaseActivity {
         col.addView(keyRow);
         keyStatus = note(Prefs.apiKey(this).isEmpty() ? "No key saved yet." : "A key is saved.");
         col.addView(keyStatus);
+
+        inputButton = button("", v -> cycleInput(), false);
+        col.addView(inputButton, full());
+        col.addView(note("Keyboard: type your question, ChatGPT answers out loud. Automatic uses the "
+                + "microphone only if \"Test microphone\" found a working one."));
+        refreshInput();
 
         voiceButton = button("", v -> cycleVoice(), false);
         col.addView(voiceButton, full());
@@ -245,6 +252,19 @@ public class SettingsActivity extends BaseActivity {
         refreshVoice();
     }
 
+    private void cycleInput() {
+        String m = Prefs.inputMode(this);
+        Prefs.setInputMode(this, "auto".equals(m) ? "keyboard" : "keyboard".equals(m) ? "mic" : "auto");
+        refreshInput();
+    }
+
+    private void refreshInput() {
+        String m = Prefs.inputMode(this);
+        String now = Prefs.useKeyboard(this) ? "keyboard" : "microphone";
+        inputButton.setText("Talk to ChatGPT with: " + ("auto".equals(m) ? "Automatic (" + now + ")"
+                : "keyboard".equals(m) ? "Keyboard" : "Microphone") + "   (tap to change)");
+    }
+
     private void refreshVoice() {
         voiceButton.setText("Voice: " + Prefs.voice(this) + "   (tap to change)");
     }
@@ -318,6 +338,10 @@ public class SettingsActivity extends BaseActivity {
                 }
                 if (best >= 0.02f) {
                     Prefs.setMicSource(app, bestSource);
+                } else {
+                    Prefs.setMicSource(app, -1);
+                }
+                if (best >= 0.02f) {
                     sb.insert(0, "✓ Microphone works. Calls will use the loudest input.\n");
                 } else {
                     sb.insert(0, "✗ No input delivered any sound. This fridge most likely has no working "
@@ -325,7 +349,7 @@ public class SettingsActivity extends BaseActivity {
                 }
             }
             final String fr = sb.toString().trim();
-            main.post(() -> { if (!isDestroyed()) micStatus.setText(fr); });
+            main.post(() -> { if (!isDestroyed()) { micStatus.setText(fr); refreshInput(); } });
         }, "mic-test").start();
     }
 

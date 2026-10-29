@@ -4,15 +4,33 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
+import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Full-screen voice call with ChatGPT. Leaving the screen ends the call. */
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Talk to ChatGPT. Two ways in:
+ *  - Microphone: a hands-free voice call.
+ *  - Keyboard (for fridges without a working mic): type, and ChatGPT answers out loud.
+ * Leaving the screen ends the session.
+ */
 public class VoiceActivity extends BaseActivity implements VoiceSession.Listener {
 
     private static final int REQ_MIC = 7;
@@ -22,18 +40,24 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     private ScrollView transcriptScroll;
     private OrbView orb;
     private ImageView muteIcon;
+    private EditText input;
+    private boolean keyboard;
     private boolean endedWithError;
     private float loudest;          // loudest mic level heard this call
     private boolean heardSpeech;    // the server detected speech at least once
+    private boolean askingPermission; // the permission dialog pauses us; don't hang up for that
+
+    /** Conversation shown on screen: alternating "you" / "ChatGPT" turns. */
+    private final List<String[]> turns = new ArrayList<>(); // {who, text}
+
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable silenceHint = () -> {
-        if (session != null && !heardSpeech && !session.isMuted()) {
+        if (session != null && !heardSpeech && !session.isMuted() && !keyboard) {
             status.setText(loudest < 0.02f
-                    ? "I can't hear the microphone at all. Try Settings → Test microphone."
+                    ? "I can't hear the microphone at all. Try Settings → Test microphone, or switch to Keyboard."
                     : "Hearing sound but no speech yet. Try speaking closer to the screen.");
         }
     };
-    private boolean askingPermission; // the permission dialog pauses us; don't hang up for that
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,9 +70,30 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
         transcriptScroll = findViewById(R.id.transcriptScroll);
         orb = findViewById(R.id.orb);
         muteIcon = findViewById(R.id.muteIcon);
+        input = findViewById(R.id.messageInput);
 
         Bitmap b = Glass.backdrop();
         if (b != null) ((ImageView) findViewById(R.id.backdrop)).setImageBitmap(b);
+
+        keyboard = Prefs.useKeyboard(this);
+        if (keyboard) {
+            findViewById(R.id.inputRow).setVisibility(View.VISIBLE);
+            findViewById(R.id.btnMute).setVisibility(View.GONE);
+            ViewGroup.LayoutParams lp = orb.getLayoutParams();
+            lp.width = lp.height = Ui.dp(this, 170);
+            orb.setLayoutParams(lp);
+            transcript.setGravity(android.view.Gravity.START);
+            findViewById(R.id.btnSend).setOnClickListener(v -> sendTyped());
+            input.setOnEditorActionListener((v, actionId, ev) -> {
+                boolean enter = ev != null && ev.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                        && ev.getAction() == KeyEvent.ACTION_DOWN;
+                if (actionId == EditorInfo.IME_ACTION_SEND || enter) {
+                    sendTyped();
+                    return true;
+                }
+                return false;
+            });
+        }
 
         findViewById(R.id.btnEnd).setOnClickListener(v -> finish());
         findViewById(R.id.btnMute).setOnClickListener(v -> toggleMute());
@@ -64,7 +109,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     @Override
     protected void onPause() {
         super.onPause();
-        // Never keep the microphone open in the background.
+        // Never keep the microphone or the connection open in the background.
         if (askingPermission) return;
         endSession();
         if (!endedWithError) finish();
@@ -84,14 +129,14 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
             finish();
             return;
         }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (!keyboard && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             status.setText("Allow microphone access to talk");
             askingPermission = true;
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
             return;
         }
-        transcript.setText("");
-        session = new VoiceSession(key, Prefs.model(this), Prefs.voice(this), Prefs.bargeIn(this), Prefs.micSource(this), this);
+        session = new VoiceSession(key, Prefs.model(this), Prefs.voice(this), Prefs.bargeIn(this),
+                Prefs.micSource(this), !keyboard, this);
         session.start();
     }
 
@@ -101,6 +146,20 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
             session.stop();
             session = null;
         }
+    }
+
+    private void sendTyped() {
+        String text = input.getText().toString().trim();
+        if (text.isEmpty()) return;
+        if (session == null || !session.sendText(text)) {
+            Toast.makeText(this, "Still connecting, try again in a moment", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        input.setText("");
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        turns.add(new String[]{"You", text});
+        render();
     }
 
     @Override
@@ -124,6 +183,23 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
         if (m) status.setText("Muted");
     }
 
+    private void render() {
+        SpannableStringBuilder sb = new SpannableStringBuilder();
+        for (String[] t : turns) {
+            if (sb.length() > 0) sb.append("\n\n");
+            if (keyboard) {
+                int start = sb.length();
+                sb.append(t[0]).append("\n");
+                sb.setSpan(new StyleSpan(Typeface.BOLD), start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                sb.setSpan(new ForegroundColorSpan("You".equals(t[0]) ? 0xFF5ED3C4 : 0xFF9FB4FF),
+                        start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            sb.append(t[1]);
+        }
+        transcript.setText(sb);
+        transcriptScroll.post(() -> transcriptScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
     // ------------------------------------------------------------------ VoiceSession.Listener
 
     @Override
@@ -138,8 +214,12 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
                 orb.setMode(OrbView.MODE_THINKING);
                 break;
             case LISTENING:
-                status.setText("Listening — go ahead");
-                if (!heardSpeech) { ui.removeCallbacks(silenceHint); ui.postDelayed(silenceHint, 12000); }
+                if (keyboard) {
+                    status.setText("Type a question below");
+                } else {
+                    status.setText("Listening — go ahead");
+                    if (!heardSpeech) { ui.removeCallbacks(silenceHint); ui.postDelayed(silenceHint, 12000); }
+                }
                 orb.setMode(OrbView.MODE_IDLE);
                 break;
             case HEARING:
@@ -157,7 +237,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
                 orb.setMode(OrbView.MODE_ASSISTANT);
                 break;
             case ENDED:
-                if (!endedWithError) status.setText("Call ended");
+                if (!endedWithError) status.setText("Ended");
                 orb.setMode(OrbView.MODE_IDLE);
                 break;
         }
@@ -165,8 +245,17 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
 
     @Override
     public void onAssistantText(String fullTextSoFar, boolean newTurn) {
-        transcript.setText(fullTextSoFar);
-        transcriptScroll.post(() -> transcriptScroll.fullScroll(View.FOCUS_DOWN));
+        if (keyboard) {
+            if (newTurn || turns.isEmpty() || !"ChatGPT".equals(turns.get(turns.size() - 1)[0])) {
+                turns.add(new String[]{"ChatGPT", fullTextSoFar});
+            } else {
+                turns.get(turns.size() - 1)[1] = fullTextSoFar;
+            }
+            render();
+        } else {
+            transcript.setText(fullTextSoFar);
+            transcriptScroll.post(() -> transcriptScroll.fullScroll(View.FOCUS_DOWN));
+        }
     }
 
     @Override

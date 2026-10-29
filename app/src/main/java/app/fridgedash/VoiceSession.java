@@ -56,6 +56,7 @@ final class VoiceSession {
     private final String apiKey, model, voice;
     private final boolean bargeIn;
     private final int preferredSource;
+    private final boolean useMic;   // false = keyboard mode: you type, ChatGPT still speaks
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -95,7 +96,9 @@ final class VoiceSession {
         Chunk(String itemId, byte[] pcm) { this.itemId = itemId; this.pcm = pcm; }
     }
 
-    VoiceSession(String apiKey, String model, String voice, boolean bargeIn, int preferredSource, Listener listener) {
+    VoiceSession(String apiKey, String model, String voice, boolean bargeIn, int preferredSource,
+                 boolean useMic, Listener listener) {
+        this.useMic = useMic;
         this.preferredSource = preferredSource;
         this.apiKey = apiKey;
         this.model = model;
@@ -137,6 +140,28 @@ final class VoiceSession {
             http.connectionPool().evictAll();
         }
     }
+
+    /** Keyboard mode: send a typed question; the answer comes back as speech + text. */
+    boolean sendText(String text) {
+        if (!running || ws == null || state == State.CONNECTING) return false;
+        try {
+            JSONObject content = new JSONObject().put("type", "input_text").put("text", text);
+            JSONObject item = new JSONObject()
+                    .put("type", "message")
+                    .put("role", "user")
+                    .put("content", new org.json.JSONArray().put(content));
+            if (responseActive || isAssistantAudible()) interrupt();
+            send(new JSONObject().put("type", "conversation.item.create").put("item", item).toString());
+            send("{\"type\":\"response.create\"}");
+            lastActivity = System.currentTimeMillis();
+            setState(State.THINKING);
+            return true;
+        } catch (JSONException e) {
+            return false;
+        }
+    }
+
+    boolean usesMic() { return useMic; }
 
     void setMuted(boolean m) { muted = m; }
     boolean isMuted() { return muted; }
@@ -245,7 +270,7 @@ final class VoiceSession {
             JSONObject pcm = new JSONObject().put("type", "audio/pcm").put("rate", RATE);
             JSONObject input = new JSONObject()
                     .put("format", pcm)
-                    .put("turn_detection", new JSONObject().put("type", "semantic_vad"));
+                    .put("turn_detection", useMic ? new JSONObject().put("type", "semantic_vad") : JSONObject.NULL);
             JSONObject output = new JSONObject()
                     .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
                     .put("voice", voice);
@@ -277,12 +302,14 @@ final class VoiceSession {
     // ------------------------------------------------------------------ audio
 
     private boolean startAudio() {
-        rec = openMic();
-        if (rec == null) {
-            fail("Couldn't open the microphone. Check Settings → Test microphone.");
-            return false;
+        if (useMic) {
+            rec = openMic();
+            if (rec == null) {
+                fail("Couldn't open the microphone. Check Settings → Test microphone.");
+                return false;
+            }
         }
-        try {
+        if (rec != null) try {
             if (AcousticEchoCanceler.isAvailable()) {
                 aec = AcousticEchoCanceler.create(rec.getAudioSessionId());
                 if (aec != null) aec.setEnabled(true);
@@ -314,11 +341,13 @@ final class VoiceSession {
         int ww = track.write(warm, 0, warm.length);
         if (ww > 0) framesWritten += ww / 2;
 
-        rec.startRecording();
-        micThread = new Thread(this::micLoop, "voice-mic");
         spkThread = new Thread(this::speakerLoop, "voice-speaker");
-        micThread.start();
         spkThread.start();
+        if (rec != null) {
+            rec.startRecording();
+            micThread = new Thread(this::micLoop, "voice-mic");
+            micThread.start();
+        }
         return true;
     }
 

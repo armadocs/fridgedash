@@ -43,5 +43,15 @@ final class Prefs {
     static int micSource(Context c) { return p(c).getInt("mic_source", -1); }
     static void setMicSource(Context c, int v) { p(c).edit().putInt("mic_source", v).apply(); }
 
+    /** "auto" (keyboard unless the mic test passed), "mic" or "keyboard". */
+    static String inputMode(Context c) { return p(c).getString("input_mode", "auto"); }
+    static void setInputMode(Context c, String v) { p(c).edit().putString("input_mode", v).apply(); }
+    static boolean useKeyboard(Context c) {
+        String m = inputMode(c);
+        if ("keyboard".equals(m)) return true;
+        if ("mic".equals(m)) return false;
+        return micSource(c) < 0;
+    }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

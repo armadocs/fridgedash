@@ -64,6 +64,7 @@
             android:name=".VoiceActivity"
             android:exported="false"
             android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustPan|stateHidden"
             android:theme="@style/AppTheme.Fullscreen" />
 
         <activity
