@@ -33,6 +33,9 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
     private long startedAt;
     private String currentImage = "";
     private boolean loading;
+    /** Paintings shown so far (for "previous"), newest last. */
+    private final java.util.ArrayList<Art.Piece> history = new java.util.ArrayList<>();
+    private int pos = -1;
 
     private final Runnable rotate = new Runnable() {
         @Override public void run() {
@@ -111,6 +114,16 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
     }
 
     private void loadNext() {
+        if (pos < history.size() - 1) { pos++; loadPiece(history.get(pos), false); return; }
+        loadPiece(null, true);
+    }
+
+    private void loadPrevious() {
+        if (pos > 0) { pos--; loadPiece(history.get(pos), false); }
+    }
+
+    /** Loads the given painting, or a new random one (added to the history). */
+    private void loadPiece(Art.Piece wanted, boolean addToHistory) {
         if (loading) return;
         loading = true;
         final int w = Math.max(root.getWidth(), 800), h = Math.max(root.getHeight(), 800);
@@ -120,7 +133,14 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
             Object[] r = null;
             String err = null;
             try {
-                r = Art.next(app, w, h, avoid);
+                if (wanted == null) {
+                    r = Art.next(app, w, h, avoid);
+                } else {
+                    StringBuilder errs = new StringBuilder();
+                    Bitmap b = Art.load(wanted, w, h, errs);
+                    if (b != null) r = new Object[]{wanted, b};
+                    else err = errs.toString();
+                }
             } catch (Exception e) {
                 err = e.getMessage();
             }
@@ -133,6 +153,11 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
                 if (fr == null) {
                     if (currentImage.isEmpty()) caption.setText("Couldn't load art: " + fe + " (tap to go back)");
                     return;
+                }
+                if (addToHistory) {
+                    history.add((Art.Piece) fr[0]);
+                    if (history.size() > 30) history.remove(0);
+                    pos = history.size() - 1;
                 }
                 show((Art.Piece) fr[0], (Bitmap) fr[1], matte);
             });
@@ -183,7 +208,24 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
 
     @Override public boolean dispatchTouchEvent(MotionEvent ev) { wake(); return true; }
 
-    @Override public boolean dispatchKeyEvent(KeyEvent ev) { wake(); return true; }
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent ev) {
+        // Arrow keys (and gestures, once mapped to them) flip through paintings without leaving art mode.
+        int k = ev.getKeyCode();
+        boolean next = k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_PAGE_DOWN || k == KeyEvent.KEYCODE_MEDIA_NEXT;
+        boolean prev = k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_PAGE_UP || k == KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+        if (next || prev) {
+            if (ev.getAction() == KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) {
+                startedAt = System.currentTimeMillis();
+                main.removeCallbacks(rotate);
+                if (next) loadNext(); else loadPrevious();
+                main.postDelayed(rotate, Prefs.artIntervalMin(this) * 60_000L);
+            }
+            return true;
+        }
+        wake();
+        return true;
+    }
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent ev) {

@@ -240,6 +240,15 @@ final class Art {
         for (int attempt = 0; attempt < 8; attempt++) {
             Piece p = all.get(rnd.nextInt(all.size()));
             if (p.image.equals(avoid) && all.size() > 1) continue;
+            Bitmap bmp = load(p, w, h, errs);
+            if (bmp != null) return new Object[]{p, bmp};
+        }
+        throw new IOException(errs.length() == 0 ? "couldn't load a painting" : errs.toString());
+    }
+
+    /** Downloads one painting sized for a w×h screen; null (with a note in errs) if it fails or is too small. */
+    static Bitmap load(Piece p, int w, int h, StringBuilder errs) {
+        {
             // The Art Institute caches 843-px-wide images; larger ones are sometimes refused.
             String[] urls = p.image.contains("/full/1686,/")
                     ? new String[]{p.image, p.image.replace("/full/1686,/", "/full/843,/")}
@@ -257,13 +266,13 @@ final class Art {
                     // Too small to fill this screen sharply? Try another painting.
                     double scale = Math.max(w / (double) bmp.getWidth(), h / (double) bmp.getHeight());
                     if (scale > 2.3) { bmp.recycle(); errs.append("low resolution; "); continue; }
-                    return new Object[]{p, bmp};
+                    return bmp;
                 } catch (Exception e) {
                     if (errs.length() < 120) errs.append(Uri.parse(url).getHost()).append(" ").append(e.getMessage()).append("; ");
                 }
             }
         }
-        throw new IOException(errs.length() == 0 ? "couldn't load a painting" : errs.toString());
+        return null;
     }
 
     private static Bitmap decode(byte[] b, int w, int h) {

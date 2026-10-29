@@ -308,7 +308,7 @@ public class SettingsActivity extends BaseActivity {
         section("Art mode");
         col.addView(note("When nobody uses the screen, famous paintings fill it (public-domain masterpieces from the "
                 + "Art Institute of Chicago and the Met, a new one every few minutes). Touch, a key, the mouse or "
-                + "someone coming close brings the dashboard back. The screen stays on while this is enabled."));
+                + "someone coming close brings the dashboard back. Left/right arrow keys flip paintings. The screen stays on while this is enabled."));
         artIdleButton = button("", v -> {
             Prefs.setArtIdleMin(this, nextOf(Prefs.ART_IDLE, Prefs.artIdleMin(this)));
             refreshArt();
@@ -320,6 +320,8 @@ public class SettingsActivity extends BaseActivity {
         }, false);
         col.addView(artIntervalButton, full());
         col.addView(button("Show art now", v -> startActivity(new Intent(this, ArtActivity.class)), true), full());
+        col.addView(button("Gesture test (wave in front of the sensor)",
+                v -> startActivity(new Intent(this, GestureTestActivity.class)), false), full());
         String sensor = Presence.describe(this);
         col.addView(note(sensor.isEmpty()
                 ? "No proximity sensor found on this device: touch, a key or the mouse wakes the dashboard."
