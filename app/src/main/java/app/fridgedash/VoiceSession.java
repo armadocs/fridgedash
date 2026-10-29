@@ -55,6 +55,7 @@ final class VoiceSession {
 
     private final String apiKey, model, voice;
     private final boolean bargeIn;
+    private final int preferredSource;
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -92,7 +93,8 @@ final class VoiceSession {
         Chunk(String itemId, byte[] pcm) { this.itemId = itemId; this.pcm = pcm; }
     }
 
-    VoiceSession(String apiKey, String model, String voice, boolean bargeIn, Listener listener) {
+    VoiceSession(String apiKey, String model, String voice, boolean bargeIn, int preferredSource, Listener listener) {
+        this.preferredSource = preferredSource;
         this.apiKey = apiKey;
         this.model = model;
         this.voice = voice;
@@ -316,7 +318,9 @@ final class VoiceSession {
 
     private AudioRecord openMic() {
         int[] rates = {24000, 48000, 16000, 44100};
-        int[] sources = {MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC};
+        int[] sources = preferredSource >= 0
+                ? new int[]{preferredSource, MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC}
+                : new int[]{MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC};
         for (int src : sources) {
             for (int rate : rates) {
                 int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);

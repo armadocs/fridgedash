@@ -100,7 +100,10 @@ public class SettingsActivity extends BaseActivity {
                 + "hear itself. Turn on to interrupt by speaking (works best if the fridge has echo cancelling)."));
         refreshBarge();
 
-        col.addView(button("Test microphone (3 seconds)", v -> testMic(), false), full());
+        LinearLayout testRow = row();
+        testRow.addView(button("Test microphone", v -> testMic(), false), weighted());
+        testRow.addView(button("Test speaker", v -> testSpeaker(), false), weighted());
+        col.addView(testRow);
         micStatus = note("");
         col.addView(micStatus);
 
@@ -250,43 +253,104 @@ public class SettingsActivity extends BaseActivity {
         bargeButton.setText("Interrupt ChatGPT by speaking: " + (Prefs.bargeIn(this) ? "ON" : "OFF"));
     }
 
+    private static final int[] MIC_SOURCES = {
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.CAMCORDER,
+            MediaRecorder.AudioSource.UNPROCESSED};
+    private static final String[] MIC_NAMES = {"MIC", "VOICE_RECOGNITION", "VOICE_COMMUNICATION", "CAMCORDER", "UNPROCESSED"};
+
+    /** Tries every microphone input for ~1.5 s each; remembers the best one for calls. */
     private void testMic() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC_TEST);
             return;
         }
-        micStatus.setText("Recording… say something");
+        micStatus.setText("Keep talking for about 8 seconds…");
+        final Context app = getApplicationContext();
         bg.execute(() -> {
-            String result;
-            AudioRecord r = null;
-            try {
-                int rate = 16000;
-                int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-                if (min <= 0) throw new IllegalStateException("No microphone found");
-                r = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, rate,
-                        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, rate));
-                if (r.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("Microphone couldn't start");
-                r.startRecording();
-                short[] buf = new short[rate / 10];
-                float peak = 0, quiet = 1;
-                for (int i = 0; i < 30; i++) {
-                    int n = r.read(buf, 0, buf.length);
-                    if (n > 0) {
-                        float l = VoiceSession.rms(buf, n);
-                        peak = Math.max(peak, l);
-                        quiet = Math.min(quiet, l);
+            StringBuilder sb = new StringBuilder();
+            int bestSource = -1;
+            float best = 0;
+            int rate = 16000;
+            int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            if (min <= 0) {
+                sb.append("✗ Android reports no microphone input at all.");
+            } else {
+                for (int k = 0; k < MIC_SOURCES.length; k++) {
+                    AudioRecord r = null;
+                    String line;
+                    try {
+                        r = new AudioRecord(MIC_SOURCES[k], rate, AudioFormat.CHANNEL_IN_MONO,
+                                AudioFormat.ENCODING_PCM_16BIT, Math.max(min, rate));
+                        if (r.getState() != AudioRecord.STATE_INITIALIZED) {
+                            line = "can't open";
+                        } else {
+                            r.startRecording();
+                            short[] buf = new short[rate / 10];
+                            float peak = 0;
+                            for (int i = 0; i < 15; i++) {
+                                int n = r.read(buf, 0, buf.length);
+                                if (n > 0) peak = Math.max(peak, VoiceSession.rms(buf, n));
+                            }
+                            line = Math.round(peak * 100) + "%";
+                            if (peak > best) { best = peak; bestSource = MIC_SOURCES[k]; }
+                        }
+                    } catch (Exception e) {
+                        line = "error";
+                    } finally {
+                        if (r != null) { try { r.stop(); } catch (Exception ignored) {} r.release(); }
                     }
+                    sb.append(MIC_NAMES[k]).append(": ").append(line).append('\n');
                 }
-                int pk = Math.round(peak * 100), q = Math.round(quiet * 100);
-                if (peak < 0.01f) result = "Microphone opened but heard nothing (level " + pk + "%). It may be missing or disabled.";
-                else result = "✓ Microphone works. Loudest " + pk + "%, background " + q + "%.";
-            } catch (Exception e) {
-                result = "✗ " + e.getMessage();
-            } finally {
-                if (r != null) { try { r.stop(); } catch (Exception ignored) {} r.release(); }
+                if (best >= 0.02f) {
+                    Prefs.setMicSource(app, bestSource);
+                    sb.insert(0, "✓ Microphone works. Calls will use the loudest input.\n");
+                } else {
+                    sb.insert(0, "✗ No input heard anything. This fridge probably has no working microphone "
+                            + "(or it's blocked by Hisense).\n");
+                }
             }
-            final String fr = result;
+            final String fr = sb.toString().trim();
             main.post(() -> { if (!isDestroyed()) micStatus.setText(fr); });
+        });
+    }
+
+    /** Plays a 1-second tone through the same channel ChatGPT's voice uses. */
+    private void testSpeaker() {
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        int vol = am == null ? -1 : am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+        int max = am == null ? -1 : am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+        bg.execute(() -> {
+            String msg;
+            try {
+                int rate = VoiceSession.RATE;
+                short[] tone = new short[rate];
+                for (int i = 0; i < rate; i++) {
+                    double env = Math.min(1.0, Math.min(i, rate - i) / 2400.0);
+                    tone[i] = (short) (Math.sin(2 * Math.PI * 660 * i / rate) * 12000 * env);
+                }
+                android.media.AudioTrack t = new android.media.AudioTrack.Builder()
+                        .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                        .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                        .setBufferSizeInBytes(tone.length * 2)
+                        .setTransferMode(android.media.AudioTrack.MODE_STATIC)
+                        .build();
+                t.write(tone, 0, tone.length);
+                t.play();
+                Thread.sleep(1200);
+                t.release();
+                msg = "Played a beep. Media volume " + vol + " of " + max
+                        + (vol == 0 ? " (MUTED: raise the volume)" : "") + ". Did you hear it?";
+            } catch (Exception e) {
+                msg = "✗ Couldn't play sound: " + e.getMessage();
+            }
+            final String m = msg;
+            main.post(() -> { if (!isDestroyed()) micStatus.setText(m); });
         });
     }
 

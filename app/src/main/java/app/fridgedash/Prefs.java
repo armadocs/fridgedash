@@ -39,5 +39,9 @@ final class Prefs {
     static int uiWidthDp(Context c) { return p(c).getInt("ui_width_dp", 540); }
     static void setUiWidthDp(Context c, int v) { p(c).edit().putInt("ui_width_dp", v).apply(); }
 
+    /** Microphone input that worked best in the test; -1 = not tested. */
+    static int micSource(Context c) { return p(c).getInt("mic_source", -1); }
+    static void setMicSource(Context c, int v) { p(c).edit().putInt("mic_source", v).apply(); }
+
     static SharedPreferences raw(Context c) { return p(c); }
 }

@@ -23,6 +23,16 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
     private OrbView orb;
     private ImageView muteIcon;
     private boolean endedWithError;
+    private float loudest;          // loudest mic level heard this call
+    private boolean heardSpeech;    // the server detected speech at least once
+    private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable silenceHint = () -> {
+        if (session != null && !heardSpeech && !session.isMuted()) {
+            status.setText(loudest < 0.02f
+                    ? "I can't hear the microphone at all. Try Settings → Test microphone."
+                    : "Hearing sound but no speech yet. Try speaking closer to the screen.");
+        }
+    };
     private boolean askingPermission; // the permission dialog pauses us; don't hang up for that
 
     @Override
@@ -81,11 +91,12 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
             return;
         }
         transcript.setText("");
-        session = new VoiceSession(key, Prefs.model(this), Prefs.voice(this), Prefs.bargeIn(this), this);
+        session = new VoiceSession(key, Prefs.model(this), Prefs.voice(this), Prefs.bargeIn(this), Prefs.micSource(this), this);
         session.start();
     }
 
     private void endSession() {
+        ui.removeCallbacks(silenceHint);
         if (session != null) {
             session.stop();
             session = null;
@@ -128,9 +139,12 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
                 break;
             case LISTENING:
                 status.setText("Listening — go ahead");
+                if (!heardSpeech) { ui.removeCallbacks(silenceHint); ui.postDelayed(silenceHint, 12000); }
                 orb.setMode(OrbView.MODE_IDLE);
                 break;
             case HEARING:
+                heardSpeech = true;
+                ui.removeCallbacks(silenceHint);
                 status.setText("Listening…");
                 orb.setMode(OrbView.MODE_USER);
                 break;
@@ -157,6 +171,7 @@ public class VoiceActivity extends BaseActivity implements VoiceSession.Listener
 
     @Override
     public void onLevel(float level) {
+        loudest = Math.max(loudest, level);
         orb.setLevel(level);
     }
 
