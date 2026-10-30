@@ -138,6 +138,12 @@ public class MainActivity extends BaseActivity {
     }
 
     @Override
+    public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        showBrief(null); // one column in portrait, two in landscape
+    }
+
+    @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
         lastActivity = System.currentTimeMillis();
         return super.dispatchTouchEvent(ev);
@@ -167,7 +173,7 @@ public class MainActivity extends BaseActivity {
     /** On a landscape screen (e.g. a picture frame), keep the dashboard a readable centred column. */
     private void fitContent(int w, int h) {
         View content = findViewById(R.id.content);
-        int max = Ui.dp(this, 640);
+        int max = Ui.dp(this, 1000); // landscape: two columns of cards
         int side = w > h && w > max ? (w - max) / 2 : Ui.dp(this, 24);
         if (content.getPaddingStart() != side) {
             content.post(() -> content.setPaddingRelative(side, content.getPaddingTop(), side, content.getPaddingBottom()));
