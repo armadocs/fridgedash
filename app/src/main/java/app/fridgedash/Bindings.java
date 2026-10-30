@@ -104,7 +104,9 @@ final class Bindings {
             }
             case "sensor": {
                 JSONArray s = b.optJSONArray("seq");
-                return "Gesture on " + b.optString("sensor") + ": " + (s == null ? "" : s.join(" → ").replace("\"", ""));
+                StringBuilder seq = new StringBuilder();
+                if (s != null) for (int i = 0; i < s.length(); i++) seq.append(i > 0 ? " → " : "").append(s.optString(i));
+                return "Gesture on " + b.optString("sensor") + ": " + seq;
             }
             case "motion": return "Movement " + b.optString("dir") + " (" + b.optString("device") + ")";
             default: return "not set";
