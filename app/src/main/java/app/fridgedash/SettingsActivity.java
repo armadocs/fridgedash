@@ -353,7 +353,9 @@ public class SettingsActivity extends BaseActivity {
         col.addView(collectionButton, full());
         col.addView(note("On the frame: ← → change the picture, ↑ ↓ switch between your albums and the paintings."));
         col.addView(button("Show art now", v -> startActivity(new Intent(this, ArtActivity.class)), true), full());
-        col.addView(button("Gesture test (wave in front of the sensor)",
+        col.addView(button("Gestures & buttons (teach what each one does)",
+                v -> startActivity(new Intent(this, GestureSetupActivity.class)), true), full());
+        col.addView(button("Sensor details (for troubleshooting)",
                 v -> startActivity(new Intent(this, GestureTestActivity.class)), false), full());
         String sensor = Presence.describe(this);
         col.addView(note(sensor.isEmpty()

@@ -79,6 +79,10 @@
             android:theme="@style/AppTheme.Fullscreen" />
 
         <activity
+            android:name=".GestureSetupActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".GestureTestActivity"
             android:exported="false" />
 

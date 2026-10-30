@@ -44,6 +44,7 @@ public class MainActivity extends BaseActivity {
     private boolean wallpaperBusy;
     private TextView weatherIcon, weatherTemp, weatherSub;
     private Presence presence;
+    private Bindings.Watcher gestures;
     private long lastActivity = System.currentTimeMillis();
     private final Runnable idleCheck = new Runnable() {
         @Override public void run() {
@@ -105,6 +106,7 @@ public class MainActivity extends BaseActivity {
         });
 
         presence = new Presence(this, () -> lastActivity = System.currentTimeMillis());
+        gestures = new Bindings.Watcher(this, this::perform);
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         watchNetwork();
         Tools.warmUp(this);                // finds the home city once, for weather questions
@@ -131,6 +133,7 @@ public class MainActivity extends BaseActivity {
         if (art) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         main.removeCallbacks(idleCheck);
+        gestures.start();
         if (art) {
             presence.start();
             main.postDelayed(idleCheck, 10_000);
@@ -152,13 +155,36 @@ public class MainActivity extends BaseActivity {
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
         lastActivity = System.currentTimeMillis();
+        String bound = Bindings.actionForKey(this, ev);
+        if (bound != null) {
+            if (ev.getAction() == android.view.KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) perform(bound);
+            return true;
+        }
         return super.dispatchKeyEvent(ev);
     }
 
     @Override
     public boolean dispatchGenericMotionEvent(android.view.MotionEvent ev) {
         lastActivity = System.currentTimeMillis();
+        String dir = Bindings.motionDir(ev);
+        String bound = dir == null ? null : Bindings.actionForMotion(this, ev, dir);
+        if (bound != null) { perform(bound); return true; }
         return super.dispatchGenericMotionEvent(ev);
+    }
+
+    /** A learned button or gesture on the dashboard: pictures/albums open art mode, the rest do what they say. */
+    private void perform(String action) {
+        lastActivity = System.currentTimeMillis();
+        switch (action) {
+            case Bindings.DASHBOARD:
+                break; // already here
+            case Bindings.CHATGPT:
+                startActivity(new Intent(this, VoiceActivity.class));
+                break;
+            default:
+                startActivity(new Intent(this, ArtActivity.class));
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        }
     }
 
     @Override
@@ -168,6 +194,7 @@ public class MainActivity extends BaseActivity {
         main.removeCallbacks(weatherTimer);
         main.removeCallbacks(idleCheck);
         presence.stop();
+        gestures.stop();
     }
 
     /** On a landscape screen (e.g. a picture frame), keep the dashboard a readable centred column. */

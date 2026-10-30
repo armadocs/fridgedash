@@ -30,6 +30,7 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
     private int front;
     private TextView caption;
     private Presence presence;
+    private Bindings.Watcher gestures;
     private long startedAt;
     private String currentImage = "";
     private boolean loading;
@@ -93,13 +94,16 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         setContentView(root);
         hideSystemBars();
         presence = new Presence(this, this);
+        gestures = new Bindings.Watcher(this, this::perform);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         startedAt = System.currentTimeMillis();
-        presence.start();
+        // If the proximity sensor carries learned gestures, waving shouldn't also close art mode.
+        if (!Bindings.usesSensorType(this, android.hardware.Sensor.TYPE_PROXIMITY)) presence.start();
+        gestures.start();
         main.removeCallbacks(rotate);
         main.post(rotate);
     }
@@ -108,6 +112,7 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
     protected void onPause() {
         super.onPause();
         presence.stop();
+        gestures.stop();
         main.removeCallbacks(rotate);
         // Art mode is only for idle time: leaving it always returns to the dashboard.
         if (!isFinishing()) finish();
@@ -254,6 +259,11 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent ev) {
+        String bound = Bindings.actionForKey(this, ev);
+        if (bound != null) {
+            if (ev.getAction() == KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) perform(bound);
+            return true;
+        }
         // Arrow keys (and gestures, once mapped to them) flip through paintings without leaving art mode.
         int k = ev.getKeyCode();
         boolean next = k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_PAGE_DOWN || k == KeyEvent.KEYCODE_MEDIA_NEXT;
@@ -281,8 +291,38 @@ public class ArtActivity extends BaseActivity implements Presence.Listener {
         return true;
     }
 
+    /** A learned button or gesture (Settings → Gestures & buttons). */
+    private void perform(String action) {
+        startedAt = System.currentTimeMillis();
+        switch (action) {
+            case Bindings.NEXT: case Bindings.PREV:
+                main.removeCallbacks(rotate);
+                if (Bindings.NEXT.equals(action)) loadNext(); else loadPrevious();
+                main.postDelayed(rotate, Prefs.artIntervalMin(this) * 60_000L);
+                break;
+            case Bindings.ALBUM_NEXT: case Bindings.ALBUM_PREV:
+                main.removeCallbacks(rotate);
+                switchCollection(Bindings.ALBUM_NEXT.equals(action) ? 1 : -1);
+                main.postDelayed(rotate, Prefs.artIntervalMin(this) * 60_000L);
+                break;
+            case Bindings.DASHBOARD:
+                startedAt = 0;
+                wake();
+                break;
+            case Bindings.CHATGPT:
+                startActivity(new android.content.Intent(this, VoiceActivity.class));
+                finish();
+                break;
+            default:
+                break; // "Show art": already showing
+        }
+    }
+
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent ev) {
+        String dir = Bindings.motionDir(ev);
+        String bound = dir == null ? null : Bindings.actionForMotion(this, ev, dir);
+        if (bound != null) { perform(bound); return true; }
         // Mouse movement; ignore the first moments so the click that opened art mode doesn't close it.
         if (System.currentTimeMillis() - startedAt > 1500) wake();
         return true;
