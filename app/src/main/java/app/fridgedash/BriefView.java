@@ -89,12 +89,6 @@ final class BriefView {
         String progress = total == 0 ? null : open == 0 ? "All done ✓" : open + " to do";
         col.addView(header("Today", subtitle(b, status), progress));
 
-        if (ctx.getResources().getConfiguration().orientation
-                == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
-            showWide(b);
-            return;
-        }
-
         List<Brief.Section> pairable = new ArrayList<>();
         for (Brief.Section s : b.sections) {
             switch (s.kind) {
@@ -113,33 +107,6 @@ final class BriefView {
             }
         }
         flushPairs(pairable);
-    }
-
-    /** Landscape: to-dos in a column on the left, everything else stacked on the right. */
-    private void showWide(Brief b) {
-        LinearLayout row = new LinearLayout(ctx);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout left = new LinearLayout(ctx), right = new LinearLayout(ctx);
-        left.setOrientation(LinearLayout.VERTICAL);
-        right.setOrientation(LinearLayout.VERTICAL);
-        for (Brief.Section s : b.sections) {
-            if (visibleCount(b, s) == 0) continue;
-            if ("tasks".equals(s.kind)) left.addView(tasksCard(b, s), cardLp());
-            else if ("later".equals(s.kind)) right.addView(laterCard(s), cardLp());
-            else right.addView(sectionCard(s), cardLp());
-        }
-        if (left.getChildCount() == 0) {
-            GlassLayout card = card();
-            card.addView(text("Nothing needs you right now ✓", 13, TEXT, true));
-            left.addView(card, cardLp());
-        }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.15f);
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        rp.setMarginStart(dp(14));
-        row.addView(left, lp);
-        row.addView(right, rp);
-        col.addView(row, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private String subtitle(Brief b, String status) {

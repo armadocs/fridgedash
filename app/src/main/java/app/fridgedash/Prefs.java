@@ -116,37 +116,5 @@ final class Prefs {
     static String extraInstructions(Context c) { return p(c).getString("extra_instructions", "").trim(); }
     static void setExtraInstructions(Context c, String v) { p(c).edit().putString("extra_instructions", v == null ? "" : v.trim()).apply(); }
 
-    /** Art mode: minutes of no activity before paintings appear (0 = off), and how often they change. */
-    static final int[] ART_IDLE = {0, 1, 2, 5, 10, 30};
-    static final int[] ART_INTERVAL = {1, 5, 15, 60};
-    static int artIdleMin(Context c) { return p(c).getInt("art_idle_min", 0); }
-    static void setArtIdleMin(Context c, int v) { p(c).edit().putInt("art_idle_min", v).apply(); }
-    static int artIntervalMin(Context c) { return p(c).getInt("art_interval_min", 5); }
-    static void setArtIntervalMin(Context c, int v) { p(c).edit().putInt("art_interval_min", v).apply(); }
-
-    /** "auto" (follow the device), "portrait" or "landscape": for frames that don't rotate on their own. */
-    static String orientation(Context c) { return p(c).getString("orientation", "auto"); }
-    static void setOrientation(Context c, String v) { p(c).edit().putString("orientation", v).apply(); }
-
-    /** Google Photos shared-album links, one per line. */
-    static String photoAlbums(Context c) { return p(c).getString("photo_albums", "").trim(); }
-    static void setPhotoAlbums(Context c, String v) { p(c).edit().putString("photo_albums", v == null ? "" : v.trim()).apply(); }
-
-    /** What art mode shows: "paintings" or an album's share link. */
-    static String artCollection(Context c) { return p(c).getString("art_collection", ""); }
-    static void setArtCollection(Context c, String v) { p(c).edit().putString("art_collection", v).apply(); }
-
-    /** Instead of letting the screen sleep, dim it after N minutes idle (0 = off: normal sleep). */
-    static final int[] DIM_AFTER = {0, 1, 2, 5, 10};
-    static int dimAfterMin(Context c) { return p(c).getInt("dim_after_min", 0); }
-    static void setDimAfterMin(Context c, int v) { p(c).edit().putInt("dim_after_min", v).apply(); }
-    /** Dim level, % of full brightness. */
-    static final int[] DIM_LEVELS = {2, 5, 10, 20};
-    static int dimLevel(Context c) { return p(c).getInt("dim_level", 5); }
-    static void setDimLevel(Context c, int v) { p(c).edit().putInt("dim_level", v).apply(); }
-    /** Let the screen sleep normally at night (23:00–6:00) even when dimming is on. */
-    static boolean nightSleep(Context c) { return p(c).getBoolean("night_sleep", true); }
-    static void setNightSleep(Context c, boolean v) { p(c).edit().putBoolean("night_sleep", v).apply(); }
-
     static SharedPreferences raw(Context c) { return p(c); }
 }

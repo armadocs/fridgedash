@@ -192,12 +192,6 @@ final class VoiceSession {
             RemoteMic rm = RemoteMic.get(ctx);
             if (useMic && rm.connected()) remote = rm;
             send(sessionUpdate());
-            if (useMic) {
-                // Separate update so an unsupported option can't spoil the main settings:
-                // a transcript of what you say lets the fridge itself catch "stop" / "ćao".
-                send("{\"type\":\"session.update\",\"session\":{\"type\":\"realtime\",\"audio\":{\"input\":"
-                        + "{\"transcription\":{\"model\":\"gpt-4o-mini-transcribe\"}}}}}");
-            }
             if (remote != null) {
                 final String msg = "Using microphone: " + rm.clientName();
                 main.post(() -> listener.onError(msg, false));
@@ -276,9 +270,6 @@ final class VoiceSession {
                 main.post(() -> listener.onAssistantText(t, fresh));
                 break;
             }
-            case "conversation.item.input_audio_transcription.completed":
-                if (isStopPhrase(ev.optString("transcript"))) hangUpNow();
-                break;
             case "response.output_item.done": {
                 JSONObject item = ev.optJSONObject("item");
                 if (item != null && "function_call".equals(item.optString("type"))) {
@@ -309,8 +300,6 @@ final class VoiceSession {
                 String code = err == null ? "" : err.optString("code");
                 // Harmless races from interrupting (nothing left to cancel/truncate).
                 if (code.contains("cancel") || code.contains("truncat") || m.contains("cancel")) break;
-                String param = err == null ? "" : err.optString("param");
-                if (param.contains("transcription") || m.contains("transcri")) break; // optional extra, not needed
                 boolean fatal = code.contains("invalid_api_key") || code.contains("model_not_found")
                         || code.contains("insufficient_quota");
                 if (fatal) fail(m);
@@ -366,8 +355,9 @@ final class VoiceSession {
                 + languageRule(Prefs.language(c)) + " "
                 + "Speak naturally and keep answers short (a few sentences) unless asked for more detail. "
                 + "People may be cooking or busy, so be clear and practical. "
-                + "When the user says stop, bye, that's all, enough, or the Serbian stani, ćao, doviđenja, to je sve, "
-                + "dosta, or otherwise ends the conversation, call end_call right away (say at most two words first). "
+                + "When the user says stop, bye, that's all or otherwise ends the conversation, say a very short "
+                + "goodbye (two or three words) and call end_call. "
+                + "If they only want you to stop talking mid-answer but keep going, just stop and wait. "
                 + "You can look things up: use get_weather for weather and web_search for news, sports, prices, "
                 + "opening hours or anything current. Never say you have no internet or real-time access; look it up. "
                 + "Before a web_search, say a few words like \"Let me check.\" "
@@ -694,36 +684,6 @@ final class VoiceSession {
             lastActivity = System.currentTimeMillis();
             send("{\"type\":\"response.create\"}");
         }, "voice-tool-" + name).start();
-    }
-
-    /** "stop", "ćao", "to je sve"… said as a short phrase on its own. */
-    static boolean isStopPhrase(String said) {
-        if (said == null) return false;
-        // Serbian transcripts may come back in Cyrillic: switch to Latin first.
-        String cyr = "абвгдђежзијклљмнњопрстћуфхцчџш", lat[] = {"a","b","v","g","d","dj","e","z","z","i","j","k","l",
-                "lj","m","n","nj","o","p","r","s","t","c","u","f","h","c","c","dz","s"};
-        StringBuilder sb = new StringBuilder();
-        for (char ch : said.toLowerCase(Locale.ROOT).toCharArray()) {
-            int i = cyr.indexOf(ch);
-            sb.append(i >= 0 ? lat[i] : String.valueOf(ch));
-        }
-        String t = " " + java.text.Normalizer.normalize(sb.toString(), java.text.Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "").replace("đ", "dj").replaceAll("[^a-z' ]", " ")
-                .replaceAll("\\s+", " ").trim() + " ";
-        if (t.trim().isEmpty() || t.trim().split(" ").length > 6) return false;
-        String[] phrases = {"stop", "stani", "stoj", "prekini", "dosta", "zatvori", "ugasi",
-                "cao", "dovidjenja", "to je sve", "to je to", "bye", "goodbye", "that's all", "thats all",
-                "that's it", "thats it", "enough", "end call", "hang up"};
-        for (String p : phrases) if (t.contains(" " + p + " ")) return true;
-        return false;
-    }
-
-    /** Hang up straight away (you said "stop"): no waiting for the model. */
-    private void hangUpNow() {
-        playQ.clear();
-        flushRequested = true;
-        if (responseActive) send("{\"type\":\"response.cancel\"}");
-        main.post(listener::onHangUp);
     }
 
     private void requestHangUp() {

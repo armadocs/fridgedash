@@ -43,20 +43,6 @@ public class MainActivity extends BaseActivity {
     };
     private boolean wallpaperBusy;
     private TextView weatherIcon, weatherTemp, weatherSub;
-    private Presence presence;
-    private Bindings.Watcher gestures;
-    private long lastActivity = System.currentTimeMillis();
-    private final Runnable idleCheck = new Runnable() {
-        @Override public void run() {
-            int idle = Prefs.artIdleMin(MainActivity.this);
-            if (idle > 0 && System.currentTimeMillis() - lastActivity > idle * 60_000L) {
-                startActivity(new Intent(MainActivity.this, ArtActivity.class));
-                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-                return;
-            }
-            main.postDelayed(this, 10_000);
-        }
-    };
     private boolean weatherBusy;
     private static final long WEATHER_CHECK_MS = 10 * 60 * 1000;
     private final Runnable weatherTimer = new Runnable() {
@@ -102,11 +88,8 @@ public class MainActivity extends BaseActivity {
         // Size is known after the first layout; load the wallpaper then (and when it changes).
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (v.getWidth() != loadedW || v.getHeight() != loadedH) loadWallpaper();
-            fitContent(v.getWidth(), v.getHeight());
         });
 
-        presence = new Presence(this, this::touched);
-        gestures = new Bindings.Watcher(this, this::perform);
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         watchNetwork();
         Tools.warmUp(this);                // finds the home city once, for weather questions
@@ -127,113 +110,6 @@ public class MainActivity extends BaseActivity {
         showWeather(Weather.cached(this));
         main.removeCallbacks(weatherTimer);
         main.post(weatherTimer);
-        // Art mode: keep the screen on (paintings replace the screen going dark) and watch for idleness.
-        lastActivity = System.currentTimeMillis();
-        boolean art = Prefs.artIdleMin(this) > 0;
-        boolean dim = Prefs.dimAfterMin(this) > 0;
-        setDimmed(false);
-        applyKeepOn();
-        main.removeCallbacks(idleCheck);
-        main.removeCallbacks(dimCheck);
-        gestures.start();
-        if (art || dim) presence.start();
-        if (art) main.postDelayed(idleCheck, 10_000);
-        if (dim) main.postDelayed(dimCheck, 5_000);
-    }
-
-    // ------------------------------------------------------------------ dim instead of sleep
-
-    private boolean dimmed, swallow;
-
-    /** Someone touched the screen, pressed a key or came near: full brightness again. */
-    private void touched() {
-        lastActivity = System.currentTimeMillis();
-        if (dimmed) setDimmed(false);
-    }
-
-    private static boolean isNight() {
-        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
-        return h >= 23 || h < 6;
-    }
-
-    /** Keep the screen on while art mode or dimming is enabled (except at night, if chosen). */
-    private void applyKeepOn() {
-        boolean keep = Prefs.artIdleMin(this) > 0
-                || (Prefs.dimAfterMin(this) > 0 && !(Prefs.nightSleep(this) && isNight()));
-        if (keep) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    }
-
-    private void setDimmed(boolean d) {
-        dimmed = d;
-        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.screenBrightness = d ? Math.max(0.01f, Prefs.dimLevel(this) / 100f)
-                : android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
-        getWindow().setAttributes(lp);
-    }
-
-    private final Runnable dimCheck = new Runnable() {
-        @Override public void run() {
-            int after = Prefs.dimAfterMin(MainActivity.this);
-            if (after <= 0) return;
-            applyKeepOn(); // switches to normal sleep when night starts
-            if (!dimmed && System.currentTimeMillis() - lastActivity > after * 60_000L) setDimmed(true);
-            main.postDelayed(this, 5_000);
-        }
-    };
-
-    @Override
-    public void onConfigurationChanged(android.content.res.Configuration c) {
-        super.onConfigurationChanged(c);
-        showBrief(null); // one column in portrait, two in landscape
-    }
-
-    @Override
-    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
-        // The touch that brightens a dimmed screen doesn't also press whatever is under the finger.
-        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) swallow = dimmed;
-        touched();
-        if (swallow) {
-            if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP
-                    || ev.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL) swallow = false;
-            return true;
-        }
-        return super.dispatchTouchEvent(ev);
-    }
-
-    @Override
-    public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
-        touched();
-        String bound = Bindings.actionForKey(this, ev);
-        if (bound != null) {
-            if (ev.getAction() == android.view.KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) perform(bound);
-            return true;
-        }
-        return super.dispatchKeyEvent(ev);
-    }
-
-    @Override
-    public boolean dispatchGenericMotionEvent(android.view.MotionEvent ev) {
-        touched();
-        String dir = Bindings.motionDir(ev);
-        String bound = dir == null ? null : Bindings.actionForMotion(this, ev, dir);
-        if (bound != null) { perform(bound); return true; }
-        return super.dispatchGenericMotionEvent(ev);
-    }
-
-    /** A learned button or gesture on the dashboard: pictures/albums open art mode, the rest do what they say. */
-    private void perform(String action) {
-        lastActivity = System.currentTimeMillis();
-        switch (action) {
-            case Bindings.DASHBOARD:
-                break; // already here
-            case Bindings.CHATGPT:
-                startActivity(new Intent(this, VoiceActivity.class));
-                break;
-            default:
-                startActivity(new Intent(this, ArtActivity.class));
-                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-        }
     }
 
     @Override
@@ -241,20 +117,6 @@ public class MainActivity extends BaseActivity {
         super.onPause();
         main.removeCallbacks(briefTimer);
         main.removeCallbacks(weatherTimer);
-        main.removeCallbacks(idleCheck);
-        main.removeCallbacks(dimCheck);
-        presence.stop();
-        gestures.stop();
-    }
-
-    /** On a landscape screen (e.g. a picture frame), keep the dashboard a readable centred column. */
-    private void fitContent(int w, int h) {
-        View content = findViewById(R.id.content);
-        int max = Ui.dp(this, 1000); // landscape: two columns of cards
-        int side = w > h && w > max ? (w - max) / 2 : Ui.dp(this, 24);
-        if (content.getPaddingStart() != side) {
-            content.post(() -> content.setPaddingRelative(side, content.getPaddingTop(), side, content.getPaddingBottom()));
-        }
     }
 
     // ------------------------------------------------------------------ weather
