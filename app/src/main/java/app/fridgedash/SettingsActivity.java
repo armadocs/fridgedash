@@ -49,6 +49,7 @@ public class SettingsActivity extends BaseActivity {
     private TextView notionStatus;
     private TextView gainButton;
     private TextView remoteStatus, remoteButton;
+    private TextView dimButton, dimLevelButton, nightButton;
     private final Runnable remoteTick = new Runnable() {
         @Override public void run() {
             refreshRemote();
@@ -282,6 +283,26 @@ public class SettingsActivity extends BaseActivity {
 
         // ---------------------------------------------------------- Screen
         section("Screen");
+        dimButton = button("", v -> {
+            Prefs.setDimAfterMin(this, nextOf(Prefs.DIM_AFTER, Prefs.dimAfterMin(this)));
+            refreshDim();
+        }, false);
+        col.addView(dimButton, full());
+        LinearLayout dimRow = row();
+        dimLevelButton = button("", v -> {
+            Prefs.setDimLevel(this, nextOf(Prefs.DIM_LEVELS, Prefs.dimLevel(this)));
+            refreshDim();
+        }, false);
+        dimRow.addView(dimLevelButton, weighted());
+        nightButton = button("", v -> {
+            Prefs.setNightSleep(this, !Prefs.nightSleep(this));
+            refreshDim();
+        }, false);
+        dimRow.addView(nightButton, weighted());
+        col.addView(dimRow);
+        col.addView(note("Dimming keeps the dashboard faintly visible instead of going black, so the screen reacts to "
+                + "the first touch without needing a wave at the sensor. The first touch only brightens it."));
+        refreshDim();
         wallButton = button("", v -> {
             Prefs.setDailyWallpaper(this, !Prefs.dailyWallpaper(this));
             refreshWallpaperButton();
@@ -926,6 +947,21 @@ public class SettingsActivity extends BaseActivity {
                 })
                 .show();
         refreshSize();
+    }
+
+    private static int nextOf(int[] options, int cur) {
+        for (int i = 0; i < options.length; i++) if (options[i] == cur) return options[(i + 1) % options.length];
+        return options[0];
+    }
+
+    private void refreshDim() {
+        int after = Prefs.dimAfterMin(this);
+        dimButton.setText("When nobody uses it: " + (after == 0 ? "screen sleeps (Hisense default)"
+                : "dim after " + after + " min, never black") + "   (tap to change)");
+        dimLevelButton.setText("Dim level: " + Prefs.dimLevel(this) + "%");
+        nightButton.setText("23:00–6:00: " + (Prefs.nightSleep(this) ? "sleep" : "stay dim"));
+        dimLevelButton.setAlpha(after == 0 ? 0.5f : 1f);
+        nightButton.setAlpha(after == 0 ? 0.5f : 1f);
     }
 
     private void refreshSize() {

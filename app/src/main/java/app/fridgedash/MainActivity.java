@@ -66,6 +66,7 @@ public class MainActivity extends BaseActivity {
         weatherSub = findViewById(R.id.weatherSub);
         findViewById(R.id.weatherCard).setOnClickListener(v ->
                 startActivity(new Intent(this, WeatherActivity.class)));
+        presence = new Presence(this, this::touched);
 
         findViewById(R.id.btnSettings).setOnClickListener(v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
@@ -110,6 +111,15 @@ public class MainActivity extends BaseActivity {
         showWeather(Weather.cached(this));
         main.removeCallbacks(weatherTimer);
         main.post(weatherTimer);
+        // Dim instead of sleeping (Settings → Screen), so the fridge never needs a wave to wake up.
+        lastActivity = System.currentTimeMillis();
+        setDimmed(false);
+        applyKeepOn();
+        main.removeCallbacks(dimCheck);
+        if (Prefs.dimAfterMin(this) > 0) {
+            presence.start();
+            main.postDelayed(dimCheck, 5_000);
+        }
     }
 
     @Override
@@ -117,6 +127,69 @@ public class MainActivity extends BaseActivity {
         super.onPause();
         main.removeCallbacks(briefTimer);
         main.removeCallbacks(weatherTimer);
+        main.removeCallbacks(dimCheck);
+        presence.stop();
+    }
+
+    // ------------------------------------------------------------------ dim instead of sleep
+
+    private Presence presence;
+    private long lastActivity = System.currentTimeMillis();
+    private boolean dimmed, swallow;
+
+    /** Someone touched the screen, pressed a key or came near: full brightness again. */
+    private void touched() {
+        lastActivity = System.currentTimeMillis();
+        if (dimmed) setDimmed(false);
+    }
+
+    private static boolean isNight() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h >= 23 || h < 6;
+    }
+
+    /** Keep the screen on while dimming is enabled (except at night, if chosen). */
+    private void applyKeepOn() {
+        boolean keep = Prefs.dimAfterMin(this) > 0 && !(Prefs.nightSleep(this) && isNight());
+        if (keep) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    private void setDimmed(boolean d) {
+        dimmed = d;
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = d ? Math.max(0.01f, Prefs.dimLevel(this) / 100f)
+                : android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+    }
+
+    private final Runnable dimCheck = new Runnable() {
+        @Override public void run() {
+            int after = Prefs.dimAfterMin(MainActivity.this);
+            if (after <= 0) return;
+            applyKeepOn(); // switches to normal sleep when night starts
+            if (!dimmed && System.currentTimeMillis() - lastActivity > after * 60_000L) setDimmed(true);
+            main.postDelayed(this, 5_000);
+        }
+    };
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        // The touch that brightens a dimmed screen doesn't also press whatever is under the finger.
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) swallow = dimmed;
+        touched();
+        if (swallow) {
+            if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                    || ev.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL) swallow = false;
+            return true;
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
+        touched();
+        return super.dispatchKeyEvent(ev);
     }
 
     // ------------------------------------------------------------------ weather
