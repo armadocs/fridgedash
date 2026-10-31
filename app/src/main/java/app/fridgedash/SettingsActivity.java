@@ -38,7 +38,9 @@ public class SettingsActivity extends BaseActivity {
     private final ExecutorService bg = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
-    private LinearLayout col;
+    private LinearLayout col;   // where the next settings go: the open section's body
+    private LinearLayout page;  // the whole page
+    private final java.util.List<View[]> sections = new java.util.ArrayList<>(); // {header, body, chevron}
     private EditText keyField, modelField, cityField, extraField;
     private TextView langButton, speedButton, modelButton, voiceStatus;
     private TextView homeButton;
@@ -71,6 +73,7 @@ public class SettingsActivity extends BaseActivity {
         col.setPadding(pad, pad, pad, pad * 2);
         scroll.addView(col);
         setContentView(scroll);
+        page = col;
 
         LinearLayout top = row();
         TextView title = text("Settings", 22, true);
@@ -79,7 +82,7 @@ public class SettingsActivity extends BaseActivity {
         col.addView(top);
 
         // ---------------------------------------------------------- ChatGPT voice
-        section("ChatGPT voice");
+        section("ChatGPT", "API key, language, voice, speed, model, your instructions, city");
         col.addView(note("Your OpenAI API key is stored only on this fridge. Paste it from the clipboard "
                 + "(for example: email it to yourself, open the email in the browser here, copy it). "
                 + "Tip: set a monthly budget limit at platform.openai.com."));
@@ -102,11 +105,6 @@ public class SettingsActivity extends BaseActivity {
         keyStatus = note(Prefs.apiKey(this).isEmpty() ? "No key saved yet." : "A key is saved.");
         col.addView(keyStatus);
 
-        inputButton = button("", v -> cycleInput(), false);
-        col.addView(inputButton, full());
-        col.addView(note("Keyboard: type your question, ChatGPT answers out loud. Automatic uses the "
-                + "microphone only if \"Test microphone\" found a working one."));
-        refreshInput();
 
         col.addView(text("Your city (for weather and local answers)", 12, false));
         cityField = new EditText(this);
@@ -156,6 +154,21 @@ public class SettingsActivity extends BaseActivity {
         col.addView(extraField);
         col.addView(note("Personality, how to address you, facts about your home: ChatGPT follows this in every call."));
         refreshVoice();
+        col.addView(text("Model (advanced)", 12, false));
+        modelField = new EditText(this);
+        modelField.setSingleLine(true);
+        modelField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        modelField.setTextColor(getColor(R.color.text));
+        modelField.setText(Prefs.model(this));
+        col.addView(modelField);
+
+        // ---------------------------------------------------------- Microphone & speaker
+        section("Microphone & speaker", "Talk or type, microphone tests, boost, interrupting");
+        inputButton = button("", v -> cycleInput(), false);
+        col.addView(inputButton, full());
+        col.addView(note("Keyboard: type your question, ChatGPT answers out loud. Automatic uses the "
+                + "microphone only if \"Test microphone\" found a working one."));
+        refreshInput();
 
         bargeButton = button("", v -> {
             Prefs.setBargeIn(this, !Prefs.bargeIn(this));
@@ -180,16 +193,9 @@ public class SettingsActivity extends BaseActivity {
         micStatus = note("");
         col.addView(micStatus);
 
-        col.addView(text("Model (advanced)", 12, false));
-        modelField = new EditText(this);
-        modelField.setSingleLine(true);
-        modelField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        modelField.setTextColor(getColor(R.color.text));
-        modelField.setText(Prefs.model(this));
-        col.addView(modelField);
 
         // ---------------------------------------------------------- Phone as microphone
-        section("Phone as microphone");
+        section("Phone as microphone", "Use a phone's microphone over Wi-Fi");
         col.addView(note("Install FridgeDash on a phone, open \"Fridge Mic\" there and turn it on. Then the "
                 + "ChatGPT button here uses the phone's microphone over Wi-Fi, and ChatGPT answers through the "
                 + "fridge's speaker. You can also start a call from the phone."));
@@ -208,7 +214,7 @@ public class SettingsActivity extends BaseActivity {
                 v -> startActivity(new Intent(this, MicLinkActivity.class)), false), full());
 
         // ---------------------------------------------------------- Daily brief
-        section("Daily brief");
+        section("Daily brief & Notion", "Shared to-do list sync, brief file");
         col.addView(note("Grok saves the brief as brief.json in your private GitHub repo; the fridge reads it "
                 + "every 5 minutes. Paste a read-only GitHub key (fine-grained token with Contents: Read-only "
                 + "on armadocs/daily-brief)."));
@@ -282,7 +288,7 @@ public class SettingsActivity extends BaseActivity {
         col.addView(notionStatus);
 
         // ---------------------------------------------------------- Screen
-        section("Screen");
+        section("Screen", "Dim instead of sleep, wallpaper, text size");
         dimButton = button("", v -> {
             Prefs.setDimAfterMin(this, nextOf(Prefs.DIM_AFTER, Prefs.dimAfterMin(this)));
             refreshDim();
@@ -316,7 +322,7 @@ public class SettingsActivity extends BaseActivity {
         refreshSize();
 
         // ---------------------------------------------------------- FridgeDash
-        section("FridgeDash");
+        section("FridgeDash", "Updates, Home button, diagnostics, all apps");
         TextView updateButton = button("", null, true);
         col.addView(updateButton, full());
         updateStatus = note("");
@@ -972,12 +978,63 @@ public class SettingsActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ view helpers
 
-    private void section(String s) {
-        TextView t = text(s.toUpperCase(), 11, true);
-        t.setTextColor(0xFFF5B14C);
-        t.setLetterSpacing(0.1f);
-        t.setPadding(0, Ui.dp(this, 24), 0, Ui.dp(this, 6));
-        col.addView(t);
+    /**
+     * Starts a collapsible section: a tappable header with a one-line summary.
+     * Everything added to col afterwards goes inside it. One section is open at a time.
+     */
+    private void section(String title, String summary) {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setBackgroundResource(R.drawable.tile);
+        int p = Ui.dp(this, 14);
+        header.setPadding(p, p, p, p);
+        header.setClickable(true);
+        header.setFocusable(true);
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView t = text(title, 15, true);
+        texts.addView(t);
+        TextView sub = text(summary, 10, false);
+        sub.setTextColor(getColor(R.color.text_dim));
+        sub.setPadding(0, Ui.dp(this, 2), 0, 0);
+        texts.addView(sub);
+        header.addView(texts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView chevron = text("▸", 18, true);
+        chevron.setTextColor(0xFFF5B14C);
+        header.addView(chevron);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hp.topMargin = Ui.dp(this, 10);
+        page.addView(header, hp);
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 10));
+        body.setVisibility(View.GONE);
+        page.addView(body);
+        col = body;
+
+        final View[] sec = {header, body, chevron};
+        sections.add(sec);
+        final String key = title;
+        header.setOnClickListener(v -> {
+            boolean open = body.getVisibility() != View.VISIBLE;
+            openSection(open ? key : "");
+            if (open) page.post(() -> ((ScrollView) page.getParent()).smoothScrollTo(0, header.getTop()));
+        });
+        header.setTag(key);
+        if (key.equals(Prefs.raw(this).getString("settings_open", ""))) setOpen(sec, true);
+    }
+
+    private void openSection(String key) {
+        Prefs.raw(this).edit().putString("settings_open", key).apply();
+        for (View[] s : sections) setOpen(s, key.equals(s[0].getTag()));
+    }
+
+    private static void setOpen(View[] s, boolean open) {
+        s[1].setVisibility(open ? View.VISIBLE : View.GONE);
+        ((TextView) s[2]).setText(open ? "▾" : "▸");
     }
 
     private TextView text(String s, float sp, boolean bold) {
