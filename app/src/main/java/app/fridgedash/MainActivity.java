@@ -105,7 +105,7 @@ public class MainActivity extends BaseActivity {
             fitContent(v.getWidth(), v.getHeight());
         });
 
-        presence = new Presence(this, () -> lastActivity = System.currentTimeMillis());
+        presence = new Presence(this, this::touched);
         gestures = new Bindings.Watcher(this, this::perform);
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         watchNetwork();
@@ -130,15 +130,57 @@ public class MainActivity extends BaseActivity {
         // Art mode: keep the screen on (paintings replace the screen going dark) and watch for idleness.
         lastActivity = System.currentTimeMillis();
         boolean art = Prefs.artIdleMin(this) > 0;
-        if (art) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        boolean dim = Prefs.dimAfterMin(this) > 0;
+        setDimmed(false);
+        applyKeepOn();
         main.removeCallbacks(idleCheck);
+        main.removeCallbacks(dimCheck);
         gestures.start();
-        if (art) {
-            presence.start();
-            main.postDelayed(idleCheck, 10_000);
-        }
+        if (art || dim) presence.start();
+        if (art) main.postDelayed(idleCheck, 10_000);
+        if (dim) main.postDelayed(dimCheck, 5_000);
     }
+
+    // ------------------------------------------------------------------ dim instead of sleep
+
+    private boolean dimmed, swallow;
+
+    /** Someone touched the screen, pressed a key or came near: full brightness again. */
+    private void touched() {
+        lastActivity = System.currentTimeMillis();
+        if (dimmed) setDimmed(false);
+    }
+
+    private static boolean isNight() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h >= 23 || h < 6;
+    }
+
+    /** Keep the screen on while art mode or dimming is enabled (except at night, if chosen). */
+    private void applyKeepOn() {
+        boolean keep = Prefs.artIdleMin(this) > 0
+                || (Prefs.dimAfterMin(this) > 0 && !(Prefs.nightSleep(this) && isNight()));
+        if (keep) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    private void setDimmed(boolean d) {
+        dimmed = d;
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = d ? Math.max(0.01f, Prefs.dimLevel(this) / 100f)
+                : android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+    }
+
+    private final Runnable dimCheck = new Runnable() {
+        @Override public void run() {
+            int after = Prefs.dimAfterMin(MainActivity.this);
+            if (after <= 0) return;
+            applyKeepOn(); // switches to normal sleep when night starts
+            if (!dimmed && System.currentTimeMillis() - lastActivity > after * 60_000L) setDimmed(true);
+            main.postDelayed(this, 5_000);
+        }
+    };
 
     @Override
     public void onConfigurationChanged(android.content.res.Configuration c) {
@@ -148,13 +190,20 @@ public class MainActivity extends BaseActivity {
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
-        lastActivity = System.currentTimeMillis();
+        // The touch that brightens a dimmed screen doesn't also press whatever is under the finger.
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) swallow = dimmed;
+        touched();
+        if (swallow) {
+            if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                    || ev.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL) swallow = false;
+            return true;
+        }
         return super.dispatchTouchEvent(ev);
     }
 
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
-        lastActivity = System.currentTimeMillis();
+        touched();
         String bound = Bindings.actionForKey(this, ev);
         if (bound != null) {
             if (ev.getAction() == android.view.KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) perform(bound);
@@ -165,7 +214,7 @@ public class MainActivity extends BaseActivity {
 
     @Override
     public boolean dispatchGenericMotionEvent(android.view.MotionEvent ev) {
-        lastActivity = System.currentTimeMillis();
+        touched();
         String dir = Bindings.motionDir(ev);
         String bound = dir == null ? null : Bindings.actionForMotion(this, ev, dir);
         if (bound != null) { perform(bound); return true; }
@@ -193,6 +242,7 @@ public class MainActivity extends BaseActivity {
         main.removeCallbacks(briefTimer);
         main.removeCallbacks(weatherTimer);
         main.removeCallbacks(idleCheck);
+        main.removeCallbacks(dimCheck);
         presence.stop();
         gestures.stop();
     }
